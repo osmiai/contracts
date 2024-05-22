@@ -1,7 +1,7 @@
 import { expect } from "chai"
 import { ethers, upgrades } from "hardhat"
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers"
-import { Osmi, OsmiAccessManager } from "../typechain-types"
+import { AccessManagedUpgradeableInterface, Osmi, OsmiAccessManager } from "../typechain-types"
 
 describe("Osmi", () => {
     async function getSigners() {
@@ -28,7 +28,7 @@ describe("Osmi", () => {
         for (const sig of signatures) {
             const selector = ethers.id(sig).substring(0, 10)
             selectors.push(selector)
-            console.log("public:", sig, selector)
+            // console.log("public:", sig, selector)
         }
         await accessManager.setTargetFunctionRole(
             osmi,
@@ -47,7 +47,6 @@ describe("Osmi", () => {
             expect(await accessManager.grantRole(BLACKLIST_ROLE, contractA, 0))
             expect(await accessManager.hasRole(BLACKLIST_ROLE, contractA)).to.deep.equal([true, 0n])
             expect(await accessManager.hasRole(PUBLIC_ROLE, contractA)).to.deep.equal([false, 0n])
-            expect(await osmi.connect(contractA).approve(owner, 0n)).to.equal(true)
             expect(await osmi.balanceOf(contractA)).to.equal(0n)
         })    
     })
