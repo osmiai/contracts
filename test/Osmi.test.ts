@@ -1,7 +1,7 @@
 import { expect } from "chai"
 import { ethers, upgrades } from "hardhat"
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers"
-import { AccessManagedUpgradeableInterface, Osmi, OsmiAccessManager } from "../typechain-types"
+import { Osmi, OsmiAccessManager } from "../typechain-types"
 
 describe("Osmi", () => {
     async function getSigners() {
