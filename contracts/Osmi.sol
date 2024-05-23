@@ -18,12 +18,12 @@ contract Osmi is Initializable, ERC20Upgradeable, ERC20BurnableUpgradeable, ERC2
     }
 
     function initialize(address initialAuthority) initializer public {
-        __ERC20_init("Osmi", "OSMI");
+        __ERC20_init("Osmi AI", "OSMIAI");
         __ERC20Burnable_init();
         __ERC20Pausable_init();
         __ERC20Capped_init(1000000000 * 10 ** decimals());
         __AccessManaged_init(initialAuthority);
-        __ERC20Permit_init("Osmi");
+        __ERC20Permit_init("Osmi AI");
         __UUPSUpgradeable_init();
     }
 

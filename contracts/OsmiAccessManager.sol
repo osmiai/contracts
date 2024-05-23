@@ -21,11 +21,7 @@ contract OsmiAccessManager is AccessManagerUpgradeable, Ownable2StepUpgradeable,
         __UUPSUpgradeable_init();
     }
 
-    function _authorizeUpgrade(address newImplementation)
-        internal
-        onlyOwner
-        override
-    {}
+    function _authorizeUpgrade(address newImplementation) internal onlyOwner override {}
 
     uint64 public constant BLACKLIST_ROLE = 0xdeadbeef;
 
