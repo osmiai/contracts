@@ -1,0 +1,1 @@
+Hardhat project containing Osmi smart contracts.
