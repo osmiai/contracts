@@ -11,19 +11,19 @@ import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC20PermitUp
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-contract Osmi is Initializable, ERC20Upgradeable, ERC20BurnableUpgradeable, ERC20PausableUpgradeable, AccessManagedUpgradeable, ERC20PermitUpgradeable, ERC20CappedUpgradeable, UUPSUpgradeable {
+contract OsmiToken is Initializable, ERC20Upgradeable, ERC20BurnableUpgradeable, ERC20PausableUpgradeable, AccessManagedUpgradeable, ERC20PermitUpgradeable, ERC20CappedUpgradeable, UUPSUpgradeable {
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
     }
 
     function initialize(address initialAuthority) initializer public {
-        __ERC20_init("OSMI AI", "OSMI");
+        __ERC20_init("osmi.ai", "OSMI");
         __ERC20Burnable_init();
         __ERC20Pausable_init();
         __ERC20Capped_init(1000000000 * 10 ** decimals());
         __AccessManaged_init(initialAuthority);
-        __ERC20Permit_init("OSMI AI");
+        __ERC20Permit_init("osmi.ai");
         __UUPSUpgradeable_init();
     }
 
