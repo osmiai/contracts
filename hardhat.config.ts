@@ -6,8 +6,15 @@ const ALCHEMY_URL_SEPOLIA = vars.get("ALCHEMY_URL_SEPOLIA")
 const SEPOLIA_PRIVATE_KEY = vars.get("SEPOLIA_PRIVATE_KEY")
 
 const config: HardhatUserConfig = {
-  solidity: "0.8.24",
-  
+  solidity: {
+    version: "0.8.28",
+    settings: {
+      optimizer: {
+        enabled: true,
+        runs: 200,
+      },
+    },
+  },
   networks: {
     sepolia: {
       url: ALCHEMY_URL_SEPOLIA,
