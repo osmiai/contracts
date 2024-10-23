@@ -1,0 +1,8 @@
+{
+  "OsmiAccessManagerProxyModule#OsmiAccessManager": "0x63152BB93b005F4Ff3D5Ea678F6Ec214f4afD17e",
+  "OsmiTokenProxyModule#OsmiToken": "0xb7CA8662Bc0CCAC723C6687f3A3fcb050bDD0fb3",
+  "OsmiAccessManagerProxyModule#ERC1967Proxy": "0xf418ece9718fb280e6cbf8Fd27892A900365765C",
+  "OsmiAccessManagerModule#OsmiAccessManager": "0xf418ece9718fb280e6cbf8Fd27892A900365765C",
+  "OsmiTokenProxyModule#ERC1967Proxy": "0xA611CF62132f80F8e8B5F354Ec9B004b1CF03369",
+  "OsmiModule#OsmiToken": "0xA611CF62132f80F8e8B5F354Ec9B004b1CF03369"
+}
