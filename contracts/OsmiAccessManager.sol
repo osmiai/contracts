@@ -8,6 +8,8 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 contract OsmiAccessManager is AccessManagerUpgradeable, Ownable2StepUpgradeable, UUPSUpgradeable {
+    uint64 public constant BLACKLIST_ROLE = 0xffffffffdeadbeef;
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -22,8 +24,6 @@ contract OsmiAccessManager is AccessManagerUpgradeable, Ownable2StepUpgradeable,
     }
 
     function _authorizeUpgrade(address newImplementation) internal onlyOwner override {}
-
-    uint64 public constant BLACKLIST_ROLE = 0xdeadbeef;
 
     /**
      * @dev We override hasRole to enforce blacklisting. If an account has the blacklist role
