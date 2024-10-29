@@ -1,11 +1,17 @@
-import { HardhatUserConfig, vars } from "hardhat/config"
+import { vars, task } from "hardhat/config"
 import "@nomicfoundation/hardhat-toolbox"
+import "@nomicfoundation/hardhat-ledger"
 import "@openzeppelin/hardhat-upgrades"
+import "./tasks/osmi-configure-permissions"
+import "./tasks/osmi-status"
+import "./tasks/osmi-admin"
 
 const ALCHEMY_URL_SEPOLIA = vars.get("ALCHEMY_URL_SEPOLIA")
-const SEPOLIA_PRIVATE_KEY = vars.get("SEPOLIA_PRIVATE_KEY")
+const ALCHEMY_URL_MAINNET = vars.get("ALCHEMY_URL_MAINNET")
+const OSMI_ADMIN_ADDRESS = vars.get("OSMI_ADMIN_ADDRESS")
+const OSMI_USER_ADDRESS = vars.get("OSMI_USER_ADDRESS")
 
-const config: HardhatUserConfig = {
+export default {
   solidity: {
     version: "0.8.28",
     settings: {
@@ -16,11 +22,19 @@ const config: HardhatUserConfig = {
     },
   },
   networks: {
+    mainnet: {
+      url: ALCHEMY_URL_MAINNET,
+      ledgerAccounts: [
+        OSMI_ADMIN_ADDRESS,
+        OSMI_USER_ADDRESS,
+      ],
+    },
     sepolia: {
       url: ALCHEMY_URL_SEPOLIA,
-      accounts: [SEPOLIA_PRIVATE_KEY],
+      ledgerAccounts: [
+        OSMI_ADMIN_ADDRESS,
+        OSMI_USER_ADDRESS,
+      ],
     }
   }
 }
-
-export default config

@@ -1,7 +1,7 @@
 import { expect } from "chai"
 import { ethers, upgrades } from "hardhat"
 import { loadFixture } from "@nomicfoundation/hardhat-toolbox/network-helpers"
-import { Osmi, OsmiAccessManager } from "../typechain-types"
+import { OsmiToken, OsmiAccessManager } from "../typechain-types"
 
 describe("Osmi", () => {
     async function getSigners() {
@@ -15,7 +15,7 @@ describe("Osmi", () => {
         const accessManager = (await upgrades.deployProxy(AccessManager, [owner.address])) as unknown as OsmiAccessManager
 
         const Osmi = await ethers.getContractFactory("Osmi")
-        const osmi = (await upgrades.deployProxy(Osmi, [await accessManager.getAddress()])) as unknown as Osmi
+        const osmi = (await upgrades.deployProxy(Osmi, [await accessManager.getAddress()])) as unknown as OsmiToken
 
         // grant public access to external functions
         const PUBLIC_ROLE = await accessManager.PUBLIC_ROLE()

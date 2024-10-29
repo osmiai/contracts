@@ -16,19 +16,8 @@ const OsmiAccessManagerProxyModule = buildModule("OsmiAccessManagerProxyModule",
     return { osmiAccessManagerProxy }
 })
 
-const OsmiAccessManagerModule = buildModule("OsmiAccessManagerModule", (builder) => {
-    // get the proxy from the previous module
-    const { osmiAccessManagerProxy } = builder.useModule(OsmiAccessManagerProxyModule)
-
-    // instantiate the contract using the deployed proxy
-    const osmiAccessManagerImpl = builder.contractAt("OsmiAccessManager", osmiAccessManagerProxy)
-    
-    // return the instance and proxy
-    return { osmiAccessManagerImpl, osmiAccessManagerProxy }
-})
-
 const OsmiTokenProxyModule = buildModule("OsmiTokenProxyModule", (builder) => {
-    const { osmiAccessManagerProxy } = builder.useModule(OsmiAccessManagerModule)
+    const { osmiAccessManagerProxy } = builder.useModule(OsmiAccessManagerProxyModule)
     
     // deploy the implementation contract
     const impl = builder.contract("OsmiToken")
@@ -38,22 +27,11 @@ const OsmiTokenProxyModule = buildModule("OsmiTokenProxyModule", (builder) => {
         osmiAccessManagerProxy,
     ])
 
-    // deploy the ERC1967 proxy, pointing to the implementation
+    // deploy the ERC1967 proxy, pointing to the initial implementation
     const osmiProxy = builder.contract("ERC1967Proxy", [impl, initialize])
 
     // return the proxy
     return { osmiProxy }
 })
 
-const OsmiTokenModule = buildModule("OsmiModule", (builder) => {
-    // get the proxy from the previous module
-    const { osmiProxy } = builder.useModule(OsmiTokenProxyModule)
-
-    // instantiate the contract using the deployed proxy
-    const osmiTokenImpl = builder.contractAt("OsmiToken", osmiProxy)
-    
-    // return the instance and proxy
-    return { osmiTokenImpl, osmiProxy }
-})
-
-export default OsmiTokenModule
+export default OsmiTokenProxyModule

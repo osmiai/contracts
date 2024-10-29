@@ -8,6 +8,20 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 contract OsmiAccessManager is AccessManagerUpgradeable, Ownable2StepUpgradeable, UUPSUpgradeable {
+    /// @custom:storage-location erc7201:ai.osmi.storage.OsmiAccessManager
+    struct OsmiAccessManagerStorage {
+        uint256 __reserved;
+    }
+
+    // keccak256(abi.encode(uint256(keccak256("ai.osmi.storage.OsmiAccessManager")) - 1)) & ~bytes32(uint256(0xff))
+    bytes32 private constant OsmiAccessManagerStorageLocation = 0x8b016679fc5ed39c90f49853290cb8934e811a906232253a532de3ae6b936c00;
+
+    function _getOsmiAccessManagerStorage() private pure returns (AccessManagerStorage storage $) {
+        assembly {
+            $.slot := OsmiAccessManagerStorageLocation
+        }
+    }
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -22,25 +36,4 @@ contract OsmiAccessManager is AccessManagerUpgradeable, Ownable2StepUpgradeable,
     }
 
     function _authorizeUpgrade(address newImplementation) internal onlyOwner override {}
-
-    uint64 public constant BLACKLIST_ROLE = 0xdeadbeef;
-
-    /**
-     * @dev We override hasRole to enforce blacklisting. If an account has the blacklist role
-     * then that will be the only role it has, regardless of other configuration. This 
-     * ensures that no restricted functions can be called by that account.
-     * 
-     * AccessManaged contracts must add the restricted modifier to each function that should
-     * be affected by blacklisting (i.e. ERC20 transfer). Additionally, PUBLIC_ROLE must be
-     * granted access for each restricted function that should be accessible by the public.
-     * 
-     * See {IAccessManager-hasRole}.
-     */
-    function hasRole(uint64 roleId, address account) public view override(AccessManagerUpgradeable) returns (bool, uint32) {
-        (bool isBlacklisted, uint32 executionDelay) = super.hasRole(BLACKLIST_ROLE, account);
-        if(isBlacklisted) {
-            return (roleId == BLACKLIST_ROLE, executionDelay);
-        }
-        return super.hasRole(roleId, account);
-    }
 }
