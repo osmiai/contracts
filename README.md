@@ -4,6 +4,10 @@ Hardhat project containing Osmi smart contracts.
 
 1. Accounts
    1. Osmi Admin: 0xee90252d437d471383AeD0f515E766dE58091E87
+   1. Osmi Node Rewards: 0x7e352F800e4785e6daFc8901Ff22E9ce23C73517
+   1. Osmi Market Making: 0xa4CeB9D3250ca77F241999496121634650A505Bc
+   1. Osmi Project Fund: 0xAdEE73C733cD77b9Ca906803bBE2cd5064D28487
+   1. Osmi Referral Program: 0x36262A2452B52f0fc4cCBFBbD543B73bfeBe3Bf3
  1. Contracts
       1. Mainnet
          1. OSMI: 0x5485a469fAEa1492191Cfce7528AB6E58135aA4d

@@ -18,11 +18,3 @@ task("osmi-status", "Reports osmi status on chain.")
     console.log("  total supply:", await OsmiToken.totalSupply())
     console.log("  cap:", await OsmiToken.cap())
   })
-
-  task("osmi-transfer", "Test user transfer.")
-  .setAction(async (args, hre) => {
-    const { OsmiToken } = await loadDeployedAddresses(hre)
-    const [ admin, user ] = await hre.ethers.getSigners()
-    await OsmiToken.connect(user).approve(admin, 0)
-    // await OsmiToken.burn(100)
-  })

@@ -60,18 +60,20 @@ function selector(v: string): BytesLike {
 task("osmi-configure-permissions", "Automated permission configuration.")
     .setAction(async (args, hre) => {
         await hre.run("sync-roles")
+        await hre.run("grant-roles")
         await hre.run("sync-token-permissions")
     })
 
 subtask("sync-roles")
     .setAction(async (taskArgs, hre) => {
+        console.log("osmi-configure-permissions:sync-roles")
         const { OsmiAccessManager } = await loadDeployedAddresses(hre)
         // get current role labels from the contract event log 
         const RoleLabel = OsmiAccessManager.getEvent("RoleLabel")
         const roleLabelEvents = await OsmiAccessManager.queryFilter(RoleLabel)
         const roleLabels = new Map<BigNumberish, string>()
         roleLabelEvents.forEach((v) => {
-            console.log(`role: ${v.args[0]} label: ${v.args[1]}`)
+            // console.log(`role: ${v.args[0]} label: ${v.args[1]}`)
             roleLabels.set(v.args[0], v.args[1])
         })
         // sync role properties
@@ -104,6 +106,7 @@ subtask("sync-roles")
 
 subtask("sync-token-permissions")
     .setAction(async (taskArgs, hre) => {
+        console.log("osmi-configure-permissions:sync-token-permissions")
         const { OsmiAccessManager, OsmiToken } = await loadDeployedAddresses(hre)
         // create selector mapping
         const roleSelectors = new Map<BigNumberish, BytesLike[]>()
@@ -119,5 +122,26 @@ subtask("sync-token-permissions")
         for (const [role, selectors] of roleSelectors) {
             console.log(`setTargetFunctionRole: ${role} => ${selectors}`)
             await OsmiAccessManager.setTargetFunctionRole(OsmiToken, selectors, role)
+        }
+    })
+
+subtask("grant-roles")
+    .setAction(async (taskArgs, hre) => {
+        console.log("osmi-configure-permissions:grant-roles")
+        const [ admin ] = await hre.ethers.getSigners()
+        const { OsmiAccessManager } = await loadDeployedAddresses(hre)
+        // grant manager role to admin
+        {
+            const [ isMember ] = await OsmiAccessManager.hasRole(MANAGER_ROLE, admin)
+            if(!isMember) {
+                await OsmiAccessManager.grantRole(MANAGER_ROLE, admin, 0)
+            }    
+        }
+        // grant minter role to admin
+        {
+            const [ isMember ] = await OsmiAccessManager.hasRole(MINTER_ROLE, admin)
+            if(!isMember) {
+                await OsmiAccessManager.grantRole(MINTER_ROLE, admin, 0)
+            }    
         }
     })
