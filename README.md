@@ -16,5 +16,6 @@ Hardhat project containing Osmi smart contracts.
          1. Osmi Access Manager: 0x8F2Fe78964D20E78e39fd4087c45B5b49ead1344
       1. Sepolia
          1. OSMI: 0xA7e92D7b8821612a19F3793Dd37C942349CfBaC3
+         1. Osmi Node NFT: 0x70977472be12a4443AD8696492b698a773530D63
          1. Osmi Access Manager: 0xd5B41BC8FABBDE892b6055AA814C67a6FF52bA9D
     

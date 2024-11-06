@@ -6,5 +6,6 @@ describe("StorageLocations", () => {
         const locations = await hre.ethers.deployContract("StorageLocations");
         console.log("OsmiAccessManagerStorageLocation:", await locations.getOsmiAccessManagerStorageLocation())
         console.log("OsmiTokenStorageLocation:", await locations.getOsmiTokenStorageLocation())
+        console.log("OsmiNodeStorageLocation:", await locations.getOsmiNodeStorageLocation())
     });
 })
