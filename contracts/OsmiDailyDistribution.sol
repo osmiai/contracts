@@ -34,7 +34,7 @@ contract OsmiDailyDistribution is Initializable, AccessManagedUpgradeable, UUPSU
     /**
      * @dev Emitted when a daily distribution occurs.
      */
-    event DailyDistribution(uint timestamp, uint256 total);
+    event DailyDistribution(uint timestamp, uint256 minted, uint256 totalSupply, uint256 cap);
 
     /**
      * @dev Emitted when token contract is changed.
@@ -277,6 +277,6 @@ contract OsmiDailyDistribution is Initializable, AccessManagedUpgradeable, UUPSU
             revert MintDiscrepancy(distribution, totalMinted);
         }
 
-        emit DailyDistribution(block.timestamp, totalMinted);
+        emit DailyDistribution(block.timestamp, totalMinted, totalSupply, cap);
     }
 }
