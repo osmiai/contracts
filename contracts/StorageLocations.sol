@@ -14,4 +14,8 @@ contract StorageLocations {
     function getOsmiNodeStorageLocation() external pure returns (bytes32) {
         return keccak256(abi.encode(uint256(keccak256("ai.osmi.storage.OsmiNode")) - 1)) & ~bytes32(uint256(0xff));
     } 
+
+    function getOsmiDailyDistributionStorage() external pure returns (bytes32) {
+        return keccak256(abi.encode(uint256(keccak256("ai.osmi.storage.OsmiDailyDistribution")) - 1)) & ~bytes32(uint256(0xff));
+    } 
 }

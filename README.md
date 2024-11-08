@@ -10,6 +10,7 @@ Hardhat project containing Osmi smart contracts.
       1. Market Making: 0xa4CeB9D3250ca77F241999496121634650A505Bc
       1. Project Fund: 0xAdEE73C733cD77b9Ca906803bBE2cd5064D28487
       1. Referral Program: 0x36262A2452B52f0fc4cCBFBbD543B73bfeBe3Bf3
+      1. Staking and Community Initiatives: 0x103Bac9b6c82410D29dEA6b41BF3a148FB51af65
 1. Contracts
       1. Mainnet
          1. OSMI: 0x5485a469fAEa1492191Cfce7528AB6E58135aA4d

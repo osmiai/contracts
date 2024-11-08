@@ -7,5 +7,6 @@ describe("StorageLocations", () => {
         console.log("OsmiAccessManagerStorageLocation:", await locations.getOsmiAccessManagerStorageLocation())
         console.log("OsmiTokenStorageLocation:", await locations.getOsmiTokenStorageLocation())
         console.log("OsmiNodeStorageLocation:", await locations.getOsmiNodeStorageLocation())
+        console.log("OsmiDailyDistributionStorageLocation:", await locations.getOsmiDailyDistributionStorage())
     });
 })

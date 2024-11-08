@@ -34,24 +34,42 @@ masterRoleSettings.set(MINTER_ROLE, {
     guardian: MANAGER_ROLE,
 })
 
+// token function roles
 const tokenFunctionRoles = new Map<string, BigNumberish>()
 
-function setTargetFunctionRole(signature: string, role: BigNumberish) {
-    if (tokenFunctionRoles.has(signature)) {
-        throw new Error("function signature already registered")
+{
+    function setFunctionRole(signature: string, role: BigNumberish) {
+        if (tokenFunctionRoles.has(signature)) {
+            throw new Error("function signature already registered")
+        }
+        tokenFunctionRoles.set(signature, role)
     }
-    tokenFunctionRoles.set(signature, role)
+    
+    // minter functions
+    setFunctionRole("mint(address,uint256)", MINTER_ROLE)
+    // public functions
+    setFunctionRole("approve(address,uint256)", PUBLIC_ROLE)
+    setFunctionRole("burn(uint256)", PUBLIC_ROLE)
+    setFunctionRole("burnFrom(address,uint256)", PUBLIC_ROLE)
+    setFunctionRole("permit(address,address,uint256,uint256,uint8,bytes32,bytes32)", PUBLIC_ROLE)
+    setFunctionRole("transfer(address,uint256)", PUBLIC_ROLE)
+    setFunctionRole("transferFrom(address,address,uint256)", PUBLIC_ROLE)    
 }
 
-// minter functions
-setTargetFunctionRole("mint(address,uint256)", MINTER_ROLE)
-// public functions
-setTargetFunctionRole("approve(address,uint256)", PUBLIC_ROLE)
-setTargetFunctionRole("burn(uint256)", PUBLIC_ROLE)
-setTargetFunctionRole("burnFrom(address,uint256)", PUBLIC_ROLE)
-setTargetFunctionRole("permit(address,address,uint256,uint256,uint8,bytes32,bytes32)", PUBLIC_ROLE)
-setTargetFunctionRole("transfer(address,uint256)", PUBLIC_ROLE)
-setTargetFunctionRole("transferFrom(address,address,uint256)", PUBLIC_ROLE)
+// daily distribution function roles
+const dailyDistributionFunctionRoles = new Map<string, BigNumberish>()
+
+{
+    function setFunctionRole(signature: string, role: BigNumberish) {
+        if (dailyDistributionFunctionRoles.has(signature)) {
+            throw new Error("function signature already registered")
+        }
+        dailyDistributionFunctionRoles.set(signature, role)
+    }
+    
+    // minter functions
+    setFunctionRole("doDailyDistribution()", MINTER_ROLE)
+}
 
 function selector(v: string): BytesLike {
     return getBytes(id(v).substring(0, 10))
@@ -62,6 +80,7 @@ task("osmi-configure-permissions", "Automated permission configuration.")
         await hre.run("sync-roles")
         await hre.run("grant-roles")
         await hre.run("sync-token-permissions")
+        await hre.run("sync-distribution-permissions")
     })
 
 subtask("sync-roles")
@@ -104,6 +123,27 @@ subtask("sync-roles")
         }
     })
 
+subtask("grant-roles")
+    .setAction(async (taskArgs, hre) => {
+        console.log("osmi-configure-permissions:grant-roles")
+        const [admin] = await hre.ethers.getSigners()
+        const { OsmiAccessManager } = await loadDeployedAddresses(hre)
+        // grant manager role to admin
+        {
+            const [isMember] = await OsmiAccessManager.hasRole(MANAGER_ROLE, admin)
+            if (!isMember) {
+                await OsmiAccessManager.grantRole(MANAGER_ROLE, admin, 0)
+            }
+        }
+        // grant minter role to admin
+        {
+            const [isMember] = await OsmiAccessManager.hasRole(MINTER_ROLE, admin)
+            if (!isMember) {
+                await OsmiAccessManager.grantRole(MINTER_ROLE, admin, 0)
+            }
+        }
+    })
+
 subtask("sync-token-permissions")
     .setAction(async (taskArgs, hre) => {
         console.log("osmi-configure-permissions:sync-token-permissions")
@@ -125,23 +165,25 @@ subtask("sync-token-permissions")
         }
     })
 
-subtask("grant-roles")
+subtask("sync-distribution-permissions")
     .setAction(async (taskArgs, hre) => {
-        console.log("osmi-configure-permissions:grant-roles")
-        const [ admin ] = await hre.ethers.getSigners()
-        const { OsmiAccessManager } = await loadDeployedAddresses(hre)
-        // grant manager role to admin
-        {
-            const [ isMember ] = await OsmiAccessManager.hasRole(MANAGER_ROLE, admin)
-            if(!isMember) {
-                await OsmiAccessManager.grantRole(MANAGER_ROLE, admin, 0)
-            }    
+        console.log("osmi-configure-permissions:sync-distribution-permissions")
+        const { OsmiAccessManager, OsmiToken, OsmiDailyDistribution } = await loadDeployedAddresses(hre)
+        // create selector mapping
+        const roleSelectors = new Map<BigNumberish, BytesLike[]>()
+        for (const [signature, role] of dailyDistributionFunctionRoles) {
+            const rs = roleSelectors.get(role)
+            if (rs) {
+                rs.push(selector(signature))
+            } else {
+                roleSelectors.set(role, [selector(signature)])
+            }
         }
-        // grant minter role to admin
-        {
-            const [ isMember ] = await OsmiAccessManager.hasRole(MINTER_ROLE, admin)
-            if(!isMember) {
-                await OsmiAccessManager.grantRole(MINTER_ROLE, admin, 0)
-            }    
+        // set daily distribution function roles
+        for (const [role, selectors] of roleSelectors) {
+            console.log(`setTargetFunctionRole: ${role} => ${selectors}`)
+            await OsmiAccessManager.setTargetFunctionRole(OsmiDailyDistribution, selectors, role)
         }
+        // grant minting role to daily distribution
+        await OsmiAccessManager.grantRole(MINTER_ROLE, OsmiDailyDistribution, 0)
     })
