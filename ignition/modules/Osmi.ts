@@ -115,16 +115,38 @@ export const OsmiDailyDistributionProxyModule = buildModule("OsmiDailyDistributi
     return { osmiDailyDistributionProxy }
 })
 
+export const OsmiNodeFactoryProxyModule = buildModule("OsmiNodeFactoryProxyModule", (builder) => {
+    const { osmiAccessManagerProxy } = builder.useModule(OsmiAccessManagerProxyModule)
+    const { osmiProxy } = builder.useModule(OsmiTokenProxyModule)
+    
+    // deploy the implementation contract
+    const impl = builder.contract("OsmiNodeFactory")
+
+    // encode the initalize function call for the contract
+    const initialize = builder.encodeFunctionCall(impl, "initialize", [
+        osmiAccessManagerProxy,
+        osmiProxy,
+    ])
+
+    // deploy the ERC1967 proxy, pointing to the initial implementation
+    const osmiNodeFactoryProxy = builder.contract("ERC1967Proxy", [impl, initialize])
+
+    // return the proxy
+    return { osmiNodeFactoryProxy }
+})
+
 export const OsmiModule = buildModule("OsmiModule", (builder) => {
     const { osmiAccessManagerProxy } = builder.useModule(OsmiAccessManagerProxyModule)
     const { osmiProxy } = builder.useModule(OsmiTokenProxyModule)
     const { osmiNodeProxy } = builder.useModule(OsmiNodeProxyModule)    
     const { osmiDailyDistributionProxy } = builder.useModule(OsmiDailyDistributionProxyModule)
+    const { osmiNodeFactoryProxy } = builder.useModule(OsmiNodeFactoryProxyModule)
     return { 
         osmiAccessManagerProxy,
         osmiProxy,
         osmiNodeProxy,
         osmiDailyDistributionProxy,
+        osmiNodeFactoryProxy,
      }
 })
 

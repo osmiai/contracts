@@ -12,10 +12,23 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 /// @custom:security-contact contact@osmi.ai
 contract OsmiNodeFactory is Initializable, AccessManagedUpgradeable, UUPSUpgradeable, EIP712Upgradeable, NoncesUpgradeable {
+    bytes32 private constant CONSUME_PURCHASE_TICKET_TYPEHASH = 
+        keccak256("ConsumePurchaseTicket(address signer,address customer,uint256 price,uint256 deadline)");
+
     /**
      * @dev Emitted when token contract is changed.
      */
     event TokenContractChanged(IOsmiToken tokenContract);
+
+    /**
+     * @dev Signature deadline expired.
+     */
+    error OsmiExpiredSignature(uint256 deadline);
+
+    /**
+     * @dev Mismatched signature.
+     */
+    error OsmiInvalidSigner(address signer, address owner);
 
     /**
      * @dev ERC20PermitAllowance contains a signed ERC20Permit allowance request. This
@@ -33,10 +46,10 @@ contract OsmiNodeFactory is Initializable, AccessManagedUpgradeable, UUPSUpgrade
 
     /**
      * @dev OsmiNodePurchaseTicket contains a signed ticket from the Osmi backend 
-     * entitling the customer to burn tokens in order to receive an OsmiNodeNFT.
+     * entitling the customer to burn tokens in order to receive an OsmiNode NFT.
      */
     struct OsmiNodePurchaseTicket {
-        address signer;
+        address owner;
         address customer;
         uint256 price;
         uint256 deadline;
@@ -105,10 +118,18 @@ contract OsmiNodeFactory is Initializable, AccessManagedUpgradeable, UUPSUpgrade
     }
 
     function _buyOsmiNode(OsmiNodePurchaseTicket calldata ticket, ERC20PermitAllowance calldata allowance) internal returns (uint256) {
-        require(allowance.spender == address(this), "this is not allowance spender");
+        require(allowance.spender == address(this), "this is not the allowance spender");
         OsmiNodeFactoryStorage storage $ = _getOsmiNodeFactoryStorageLocation();
-        // consume purchase ticticket
-        _consumePurchaseTicket(ticket);
+        // consume purchase ticket
+        _consumePurchaseTicket(
+            ticket.owner,
+            ticket.customer,
+            ticket.price,
+            ticket.deadline,
+            ticket.v,
+            ticket.r,
+            ticket.s
+        );
         // set token allowance
         $.tokenContract.permit(
             allowance.owner,
@@ -127,7 +148,33 @@ contract OsmiNodeFactory is Initializable, AccessManagedUpgradeable, UUPSUpgrade
         return $.nodeContract.getTotalSupply() - 1;
     }
 
-    function _consumePurchaseTicket(OsmiNodePurchaseTicket calldata ticket) internal {
-        require(false, "not implemented");
+    function _consumePurchaseTicket(
+        address owner, 
+        address customer, 
+        uint256 price, 
+        uint256 deadline, 
+        uint8 v, 
+        bytes32 r, 
+        bytes32 s
+    ) internal {
+        if (block.timestamp > deadline) {
+            revert OsmiExpiredSignature(deadline);
+        }
+
+        bytes32 structHash = keccak256(abi.encode(
+            CONSUME_PURCHASE_TICKET_TYPEHASH, 
+            owner, 
+            customer, 
+            price, 
+            _useNonce(customer), 
+            deadline
+        ));
+
+        bytes32 hash = _hashTypedDataV4(structHash);
+
+        address signer = ECDSA.recover(hash, v, r, s);
+        if (signer != owner) {
+            revert OsmiInvalidSigner(signer, owner);
+        }
     }
 }
