@@ -235,7 +235,7 @@ subtask("node-factory")
     .setAction(async (taskArgs, hre) => {
         console.log("osmi-configure-permissions:node-factory")
         const { OsmiAccessManager, OsmiNodeFactory } = await loadDeployedAddresses(hre)
-        await applyFunctionRoles(nodeNftFunctionRoles, OsmiAccessManager, OsmiNodeFactory)
+        await applyFunctionRoles(nodeFactoryFunctionRoles, OsmiAccessManager, OsmiNodeFactory)
         // grant minting role to node factory
         const [isMember] = await OsmiAccessManager.hasRole(MINTER_ROLE, OsmiNodeFactory)
         if (!isMember) {

@@ -3,7 +3,7 @@
 pragma solidity ^0.8.22;
 
 import {IOsmiToken} from "./IOsmiToken.sol";
-import {OsmiNode} from "./OsmiNode.sol";
+import {IOsmiNode} from "./IOsmiNode.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EIP712Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
 import {NoncesUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/NoncesUpgradeable.sol";
@@ -21,6 +21,11 @@ contract OsmiNodeFactory is Initializable, AccessManagedUpgradeable, UUPSUpgrade
     event TokenContractChanged(IOsmiToken tokenContract);
 
     /**
+     * @dev Emitted when purchase ticket signer is changed.
+     */
+    event PurchaseTicketSignerChanged(address purchaseTicketSigner);
+
+    /**
      * @dev Signature deadline expired.
      */
     error OsmiExpiredSignature(uint256 deadline);
@@ -29,6 +34,11 @@ contract OsmiNodeFactory is Initializable, AccessManagedUpgradeable, UUPSUpgrade
      * @dev Mismatched signature.
      */
     error OsmiInvalidSigner(address signer, address owner);
+
+    /**
+     * @dev Invalid purchase ticket signer.
+     */
+    error OsmiInvalidPurchaseTicketSigner(address signer, address one, address two);
 
     /**
      * @dev ERC20PermitAllowance contains a signed ERC20Permit allowance request. This
@@ -49,7 +59,7 @@ contract OsmiNodeFactory is Initializable, AccessManagedUpgradeable, UUPSUpgrade
      * entitling the customer to burn tokens in order to receive an OsmiNode NFT.
      */
     struct OsmiNodePurchaseTicket {
-        address owner;
+        address signer;
         address customer;
         uint256 price;
         uint256 deadline;
@@ -58,10 +68,11 @@ contract OsmiNodeFactory is Initializable, AccessManagedUpgradeable, UUPSUpgrade
         bytes32 s;
     }
 
-    /// @custom:storage-location erc7201:ai.osmi.storage.OsmiNodeFactory
+    /// @cu_validatePurchaseTicketSignererc7201:ai.osmi.storage.OsmiNodeFactory
     struct OsmiNodeFactoryStorage {
         IOsmiToken tokenContract;
-        OsmiNode nodeContract;
+        IOsmiNode nodeContract;
+        address [2]purchaseTicketSigners;
     }
 
     // keccak256(abi.encode(uint256(keccak256("ai.osmi.storage.OsmiNodeFactory")) - 1)) & ~bytes32(uint256(0xff))
@@ -78,12 +89,13 @@ contract OsmiNodeFactory is Initializable, AccessManagedUpgradeable, UUPSUpgrade
         _disableInitializers();
     }
 
-    function initialize(address initialAuthority, address tokenContract) initializer public {
+    function initialize(address initialAuthority, address tokenContract, address purchaseTicketSigner) initializer public {
         __AccessManaged_init(initialAuthority);
         __Nonces_init();
         __UUPSUpgradeable_init();
         __EIP712_init("OsmiNodeFactory", "1");
         _setTokenContract(tokenContract);
+        _setPurchaseTicketSigner(purchaseTicketSigner);
     }
 
     function _authorizeUpgrade(address newImplementation)
@@ -111,6 +123,36 @@ contract OsmiNodeFactory is Initializable, AccessManagedUpgradeable, UUPSUpgrade
     }
 
     /**
+     * @dev Return the currently recognized purchase ticket signer addresses.
+     */
+    function getPurchaseTicketSigners() external view returns(address,address) {
+        OsmiNodeFactoryStorage storage $ = _getOsmiNodeFactoryStorageLocation();
+        return ($.purchaseTicketSigners[0], $.purchaseTicketSigners[1]);
+    }
+
+    /**
+     * @dev Restricted function to set the purchase ticket signer. Signers are stored
+     * in a double-buffered manner. This function only updates the latest signer, pushing
+     * the previous signer into the second slot. This allows us to rotate out signing
+     * accounts without downtime.
+     */
+    function setPurchaseTicketSigner(address purchaseTicketSigner) restricted external {
+        return _setPurchaseTicketSigner(purchaseTicketSigner);
+    }
+
+    function _setPurchaseTicketSigner(address purchaseTicketSigner) internal {
+        require (purchaseTicketSigner != address(0), "signer address can't be zero");
+        OsmiNodeFactoryStorage storage $ = _getOsmiNodeFactoryStorageLocation();
+        if($.purchaseTicketSigners[0] == purchaseTicketSigner) {
+            // nothing to do
+            return;
+        }
+        $.purchaseTicketSigners[1] = $.purchaseTicketSigners[0];
+        $.purchaseTicketSigners[0] = purchaseTicketSigner;
+        emit PurchaseTicketSignerChanged(purchaseTicketSigner);
+    }
+
+    /**
      * @dev Restricted function to buy an OsmiNode by burning $OSMI. Returns the id of the token if successful.
      */
     function buyOsmiNode(OsmiNodePurchaseTicket calldata ticket, ERC20PermitAllowance calldata allowance) restricted external returns (uint256) {
@@ -122,7 +164,7 @@ contract OsmiNodeFactory is Initializable, AccessManagedUpgradeable, UUPSUpgrade
         OsmiNodeFactoryStorage storage $ = _getOsmiNodeFactoryStorageLocation();
         // consume purchase ticket
         _consumePurchaseTicket(
-            ticket.owner,
+            ticket.signer,
             ticket.customer,
             ticket.price,
             ticket.deadline,
@@ -149,7 +191,7 @@ contract OsmiNodeFactory is Initializable, AccessManagedUpgradeable, UUPSUpgrade
     }
 
     function _consumePurchaseTicket(
-        address owner, 
+        address signer, 
         address customer, 
         uint256 price, 
         uint256 deadline, 
@@ -161,9 +203,11 @@ contract OsmiNodeFactory is Initializable, AccessManagedUpgradeable, UUPSUpgrade
             revert OsmiExpiredSignature(deadline);
         }
 
+        _validatePurchaseTicketSignerSigner(signer);
+
         bytes32 structHash = keccak256(abi.encode(
             CONSUME_PURCHASE_TICKET_TYPEHASH, 
-            owner, 
+            signer, 
             customer, 
             price, 
             _useNonce(customer), 
@@ -172,9 +216,16 @@ contract OsmiNodeFactory is Initializable, AccessManagedUpgradeable, UUPSUpgrade
 
         bytes32 hash = _hashTypedDataV4(structHash);
 
-        address signer = ECDSA.recover(hash, v, r, s);
-        if (signer != owner) {
-            revert OsmiInvalidSigner(signer, owner);
+        address recoveredSigner = ECDSA.recover(hash, v, r, s);
+        if (recoveredSigner != signer) {
+            revert OsmiInvalidSigner(recoveredSigner, signer);
+        }
+    }
+
+    function _validatePurchaseTicketSignerSigner(address v) internal view {
+        OsmiNodeFactoryStorage storage $ = _getOsmiNodeFactoryStorageLocation();
+        if (v != $.purchaseTicketSigners[0] && v != $.purchaseTicketSigners[1]) {
+            revert OsmiInvalidPurchaseTicketSigner(v, $.purchaseTicketSigners[0], $.purchaseTicketSigners[1]);
         }
     }
 }

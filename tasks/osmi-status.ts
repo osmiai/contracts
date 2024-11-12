@@ -10,9 +10,9 @@ function commify(value: string) {
   const neg = match[1];
   const whole = BigInt(match[2] || 0).toLocaleString("en-us");
   let frac = "0"
-  if(match[4]) {
+  if (match[4]) {
     const m4 = match[4].match(/^(.*?)0*$/)
-    if(m4 && m4[1]) {
+    if (m4 && m4[1]) {
       frac = m4[1]
     }
   }
@@ -24,7 +24,7 @@ task("osmi-status", "Reports osmi status on chain.")
     function format(v: BigNumberish) {
       return commify(formatUnits(v))
     }
-    const { OsmiToken, OsmiAccessManager } = await loadDeployedAddresses(hre)
+    const { OsmiToken, OsmiAccessManager, OsmiNode, OsmiNodeFactory } = await loadDeployedAddresses(hre)
     const network = await hre.ethers.provider.getNetwork()
     const [admin] = await hre.ethers.getSigners()
     console.log(`network: ${network.name} (${network.chainId})`)
@@ -38,6 +38,19 @@ task("osmi-status", "Reports osmi status on chain.")
     console.log("        closed:", await OsmiAccessManager.isTargetClosed(OsmiToken))
     console.log("           cap:", format(await OsmiToken.cap()))
     console.log("  total supply:", format(await OsmiToken.totalSupply()))
+    console.log("OsmiNode:")
+    console.log("          name:", await OsmiNode.name())
+    console.log("        symbol:", await OsmiNode.symbol())
+    console.log("     authority:", await OsmiNode.authority())
+    console.log("        closed:", await OsmiAccessManager.isTargetClosed(OsmiNode))
+    console.log("  total supply:", await OsmiNode.getTotalSupply())
+    console.log("OsmiNodeFactory:")
+    console.log("     authority:", await OsmiNodeFactory.authority())
+    console.log("        closed:", await OsmiAccessManager.isTargetClosed(OsmiNodeFactory))
+    {
+      const [one, two] = await OsmiNodeFactory.getPurchaseTicketSigners()
+      console.log("       signers:", one, two)
+    }
     console.log("osmi-nodes.eth:")
     console.log(`  $OSMI: ${format(await OsmiToken.balanceOf(vars.get("OSMI_NODE_REWARDS_ADDRESS")))}`)
     console.log("osmi-project.eth:")

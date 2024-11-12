@@ -75,6 +75,7 @@ export const OsmiDailyDistributionProxyModule = buildModule("OsmiDailyDistributi
         referralProgram: Pool
     }
 
+    // this must match the value in OsmiDailyDistribution.sol
     const RatioDenominator = 1_000_000_000
 
     const pools: Pools = {
@@ -126,6 +127,7 @@ export const OsmiNodeFactoryProxyModule = buildModule("OsmiNodeFactoryProxyModul
     const initialize = builder.encodeFunctionCall(impl, "initialize", [
         osmiAccessManagerProxy,
         osmiProxy,
+        vars.get("OSMI_PURCHASE_TICKET_SIGNER"),
     ])
 
     // deploy the ERC1967 proxy, pointing to the initial implementation
