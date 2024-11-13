@@ -12,8 +12,8 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 /// @custom:security-contact contact@osmi.ai
 contract OsmiNodeFactory is Initializable, AccessManagedUpgradeable, UUPSUpgradeable, EIP712Upgradeable, NoncesUpgradeable {
-    bytes32 private constant CONSUME_PURCHASE_TICKET_TYPEHASH = 
-        keccak256("ConsumePurchaseTicket(address signer,address customer,uint256 price,uint256 deadline)");
+    bytes32 private constant PURCHASE_TICKET_TYPEHASH = 
+        keccak256("PurchaseTicket(address signer,address customer,uint256 price,uint256 nonce,uint256 deadline)");
 
     /**
      * @dev Emitted when token contract is changed.
@@ -68,7 +68,7 @@ contract OsmiNodeFactory is Initializable, AccessManagedUpgradeable, UUPSUpgrade
         bytes32 s;
     }
 
-    /// @cu_validatePurchaseTicketSignererc7201:ai.osmi.storage.OsmiNodeFactory
+    /// @custom:storage-location erc7201:ai.osmi.storage.OsmiNodeFactory
     struct OsmiNodeFactoryStorage {
         IOsmiToken tokenContract;
         IOsmiNode nodeContract;
@@ -115,7 +115,6 @@ contract OsmiNodeFactory is Initializable, AccessManagedUpgradeable, UUPSUpgrade
         require(tokenContract != address(0), "token contract can't be zero");
         OsmiNodeFactoryStorage storage $ = _getOsmiNodeFactoryStorageLocation();
         if($.tokenContract == IOsmiToken(tokenContract)) {
-            // nothing to do
             return;
         }
         $.tokenContract = IOsmiToken(tokenContract);
@@ -144,7 +143,6 @@ contract OsmiNodeFactory is Initializable, AccessManagedUpgradeable, UUPSUpgrade
         require (purchaseTicketSigner != address(0), "signer address can't be zero");
         OsmiNodeFactoryStorage storage $ = _getOsmiNodeFactoryStorageLocation();
         if($.purchaseTicketSigners[0] == purchaseTicketSigner) {
-            // nothing to do
             return;
         }
         $.purchaseTicketSigners[1] = $.purchaseTicketSigners[0];
@@ -203,10 +201,10 @@ contract OsmiNodeFactory is Initializable, AccessManagedUpgradeable, UUPSUpgrade
             revert OsmiExpiredSignature(deadline);
         }
 
-        _validatePurchaseTicketSignerSigner(signer);
+        _validatePurchaseTicketSigner(signer);
 
         bytes32 structHash = keccak256(abi.encode(
-            CONSUME_PURCHASE_TICKET_TYPEHASH, 
+            PURCHASE_TICKET_TYPEHASH, 
             signer, 
             customer, 
             price, 
@@ -222,7 +220,7 @@ contract OsmiNodeFactory is Initializable, AccessManagedUpgradeable, UUPSUpgrade
         }
     }
 
-    function _validatePurchaseTicketSignerSigner(address v) internal view {
+    function _validatePurchaseTicketSigner(address v) internal view {
         OsmiNodeFactoryStorage storage $ = _getOsmiNodeFactoryStorageLocation();
         if (v != $.purchaseTicketSigners[0] && v != $.purchaseTicketSigners[1]) {
             revert OsmiInvalidPurchaseTicketSigner(v, $.purchaseTicketSigners[0], $.purchaseTicketSigners[1]);
