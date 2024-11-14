@@ -19,3 +19,11 @@ task("osmi-new-wallet", "Create a new random wallet.")
         console.log("address:", wallet.address)
         console.log("private key:", wallet.signingKey.privateKey)
     })
+
+
+task("osmi-upgrade-node", "Upgrade OsmiNode implementation.")
+    .setAction(async (args, hre) => {
+        // TODO: SNICHOLS: clean this up
+        const { OsmiNode } = await loadDeployedAddresses(hre)
+        // await OsmiNode.upgradeToAndCall("0xbC66EdCd35a91A682125753243984E9a54e700BB", "0x")
+    })    

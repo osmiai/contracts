@@ -21,6 +21,11 @@ contract OsmiNodeFactory is Initializable, AccessManagedUpgradeable, UUPSUpgrade
     event TokenContractChanged(IOsmiToken tokenContract);
 
     /**
+     * @dev Emitted when node contract is changed.
+     */
+    event NodeContractChanged(IOsmiNode nodeContract);
+
+    /**
      * @dev Emitted when purchase ticket signer is changed.
      */
     event PurchaseTicketSignerChanged(address purchaseTicketSigner);
@@ -89,12 +94,13 @@ contract OsmiNodeFactory is Initializable, AccessManagedUpgradeable, UUPSUpgrade
         _disableInitializers();
     }
 
-    function initialize(address initialAuthority, address tokenContract, address purchaseTicketSigner) initializer public {
+    function initialize(address initialAuthority, address tokenContract, address nodeContract, address purchaseTicketSigner) initializer public {
         __AccessManaged_init(initialAuthority);
         __Nonces_init();
         __UUPSUpgradeable_init();
         __EIP712_init("OsmiNodeFactory", "1");
         _setTokenContract(tokenContract);
+        _setNodeContract(nodeContract);
         _setPurchaseTicketSigner(purchaseTicketSigner);
     }
 
@@ -119,6 +125,23 @@ contract OsmiNodeFactory is Initializable, AccessManagedUpgradeable, UUPSUpgrade
         }
         $.tokenContract = IOsmiToken(tokenContract);
         emit TokenContractChanged($.tokenContract);
+    }
+
+    /**
+     * @dev Restricted function to set the node contract for purchasing.
+     */
+    function setNodeContract(address nodeContract) restricted external {
+        return _setNodeContract(nodeContract);
+    }
+
+    function _setNodeContract(address nodeContract) internal {
+        require(nodeContract != address(0), "node contract can't be zero");
+        OsmiNodeFactoryStorage storage $ = _getOsmiNodeFactoryStorageLocation();
+        if($.nodeContract == IOsmiNode(nodeContract)) {
+            return;
+        }
+        $.nodeContract = IOsmiNode(nodeContract);
+        emit NodeContractChanged($.nodeContract);
     }
 
     /**

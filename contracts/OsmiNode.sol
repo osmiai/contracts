@@ -63,7 +63,7 @@ contract OsmiNode is Initializable, ERC721Upgradeable, AccessManagedUpgradeable,
     }
 
     function _baseURI() internal pure override returns (string memory) {
-        return "https://nodes.osmi.ai/api/metadata/";
+        return "https://nodes.osmi.ai/api/token-metadata/OsmiNode/";
     }
 
     /**
@@ -136,8 +136,8 @@ contract OsmiNode is Initializable, ERC721Upgradeable, AccessManagedUpgradeable,
     function safeMint(address to) public restricted {
         OsmiNodeStorage storage $ = _getOsmiNodeStorageLocation();
         uint256 tokenId = $.nextTokenId++;
-        _setTransferLockedUntil(tokenId, block.timestamp + $.transferLockDurationOnMint);
         _safeMint(to, tokenId);
+        _setTransferLockedUntil(tokenId, block.timestamp + $.transferLockDurationOnMint);
     }
 
     /**

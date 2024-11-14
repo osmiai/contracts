@@ -4,54 +4,54 @@ import { vars } from "hardhat/config"
 
 export const OsmiAccessManagerProxyModule = buildModule("OsmiAccessManagerProxyModule", (builder) => {
     // deploy the implementation contract
-    const impl = builder.contract("OsmiAccessManager")
+    const osmiAccessManager = builder.contract("OsmiAccessManager")
 
     // encode the initalize function call for the contract
-    const initialize = builder.encodeFunctionCall(impl, "initialize", [
+    const initialize = builder.encodeFunctionCall(osmiAccessManager, "initialize", [
         builder.getAccount(0),
     ])
 
     // deploy the ERC1967 proxy, pointing to the implementation
-    const osmiAccessManagerProxy = builder.contract("ERC1967Proxy", [impl, initialize])
+    const osmiAccessManagerProxy = builder.contract("ERC1967Proxy", [osmiAccessManager, initialize])
 
     // return the proxy
-    return { osmiAccessManagerProxy }
+    return { osmiAccessManagerProxy, osmiAccessManager }
 })
 
 export const OsmiTokenProxyModule = buildModule("OsmiTokenProxyModule", (builder) => {
     const { osmiAccessManagerProxy } = builder.useModule(OsmiAccessManagerProxyModule)
     
     // deploy the implementation contract
-    const impl = builder.contract("OsmiToken")
+    const osmiToken = builder.contract("OsmiToken")
 
     // encode the initalize function call for the contract
-    const initialize = builder.encodeFunctionCall(impl, "initialize", [
+    const initialize = builder.encodeFunctionCall(osmiToken, "initialize", [
         osmiAccessManagerProxy,
     ])
 
     // deploy the ERC1967 proxy, pointing to the initial implementation
-    const osmiProxy = builder.contract("ERC1967Proxy", [impl, initialize])
+    const osmiProxy = builder.contract("ERC1967Proxy", [osmiToken, initialize])
 
     // return the proxy
-    return { osmiProxy }
+    return { osmiProxy, osmiToken }
 })
 
 export const OsmiNodeProxyModule = buildModule("OsmiNodeProxyModule", (builder) => {
     const { osmiAccessManagerProxy } = builder.useModule(OsmiAccessManagerProxyModule)
     
     // deploy the implementation contract
-    const impl = builder.contract("OsmiNode")
+    const osmiNode = builder.contract("OsmiNode")
 
     // encode the initalize function call for the contract
-    const initialize = builder.encodeFunctionCall(impl, "initialize", [
+    const initialize = builder.encodeFunctionCall(osmiNode, "initialize", [
         osmiAccessManagerProxy,
     ])
 
     // deploy the ERC1967 proxy, pointing to the initial implementation
-    const osmiNodeProxy = builder.contract("ERC1967Proxy", [impl, initialize])
+    const osmiNodeProxy = builder.contract("ERC1967Proxy", [osmiNode, initialize])
 
     // return the proxy
-    return { osmiNodeProxy }
+    return { osmiNodeProxy, osmiNode }
 })
 
 export const OsmiDailyDistributionProxyModule = buildModule("OsmiDailyDistributionProxyModule", (builder) => {
@@ -59,7 +59,7 @@ export const OsmiDailyDistributionProxyModule = buildModule("OsmiDailyDistributi
     const { osmiProxy } = builder.useModule(OsmiTokenProxyModule)
     
     // deploy the implementation contract
-    const impl = builder.contract("OsmiDailyDistribution")
+    const osmiDailyDistribution = builder.contract("OsmiDailyDistribution")
 
     interface Pool {
         [key: string]: any
@@ -102,7 +102,7 @@ export const OsmiDailyDistributionProxyModule = buildModule("OsmiDailyDistributi
     const dailyEmission = Math.round(RatioDenominator * (0.15/100))
 
     // encode the initalize function call for the contract
-    const initialize = builder.encodeFunctionCall(impl, "initialize", [
+    const initialize = builder.encodeFunctionCall(osmiDailyDistribution, "initialize", [
         osmiAccessManagerProxy,
         osmiProxy,
         dailyEmission, 
@@ -110,31 +110,33 @@ export const OsmiDailyDistributionProxyModule = buildModule("OsmiDailyDistributi
     ])
 
     // deploy the ERC1967 proxy, pointing to the initial implementation
-    const osmiDailyDistributionProxy = builder.contract("ERC1967Proxy", [impl, initialize])
+    const osmiDailyDistributionProxy = builder.contract("ERC1967Proxy", [osmiDailyDistribution, initialize])
 
     // return the proxy
-    return { osmiDailyDistributionProxy }
+    return { osmiDailyDistributionProxy, osmiDailyDistribution }
 })
 
 export const OsmiNodeFactoryProxyModule = buildModule("OsmiNodeFactoryProxyModule", (builder) => {
     const { osmiAccessManagerProxy } = builder.useModule(OsmiAccessManagerProxyModule)
     const { osmiProxy } = builder.useModule(OsmiTokenProxyModule)
+    const { osmiNodeProxy } = builder.useModule(OsmiNodeProxyModule)
     
     // deploy the implementation contract
-    const impl = builder.contract("OsmiNodeFactory")
+    const osmiNodeFactory = builder.contract("OsmiNodeFactory")
 
     // encode the initalize function call for the contract
-    const initialize = builder.encodeFunctionCall(impl, "initialize", [
+    const initialize = builder.encodeFunctionCall(osmiNodeFactory, "initialize", [
         osmiAccessManagerProxy,
         osmiProxy,
+        osmiNodeProxy,
         vars.get("OSMI_PURCHASE_TICKET_SIGNER"),
     ])
 
     // deploy the ERC1967 proxy, pointing to the initial implementation
-    const osmiNodeFactoryProxy = builder.contract("ERC1967Proxy", [impl, initialize])
+    const osmiNodeFactoryProxy = builder.contract("ERC1967Proxy", [osmiNodeFactory, initialize])
 
     // return the proxy
-    return { osmiNodeFactoryProxy }
+    return { osmiNodeFactoryProxy, osmiNodeFactory }
 })
 
 export const OsmiModule = buildModule("OsmiModule", (builder) => {
