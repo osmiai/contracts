@@ -9,5 +9,5 @@
   "OsmiNodeFactoryProxyModule#OsmiNodeFactory": "0x00954887dAbD255a74A53b412C2622c920C258de",
   "OsmiDailyDistributionProxyModule#ERC1967Proxy": "0x8427bb8017A0949408E58cd32f28A6d8D87d1f4e",
   "OsmiNodeFactoryProxyModule#ERC1967Proxy": "0x9aBE9b095fbDCBac1449cDc0d4F9E0812A601Cb7",
-  "OsmiNodeUpgradeModule#OsmiNode": "0xbC66EdCd35a91A682125753243984E9a54e700BB"
+  "OsmiNodeUpgradeModule#OsmiNode": "0x1f9254E03273B2ac0DD5a2Fd1b7899c5522090a7"
 }

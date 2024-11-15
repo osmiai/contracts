@@ -6,6 +6,7 @@ import "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
 
 /// @custom:security-contact contact@osmi.ai
 contract OsmiNode is Initializable, ERC721Upgradeable, AccessManagedUpgradeable, UUPSUpgradeable {
@@ -62,8 +63,14 @@ contract OsmiNode is Initializable, ERC721Upgradeable, AccessManagedUpgradeable,
         $.transferLockDurationOnMint = InitialTransferLockDurationOnMint;
     }
 
-    function _baseURI() internal pure override returns (string memory) {
-        return "https://nodes.osmi.ai/api/token-metadata/OsmiNode/";
+    function _baseURI() internal view override returns (string memory) {
+        return string.concat(
+            string.concat(
+                "https://nodes.osmi.ai/api/token-metadata/",
+                Strings.toString(block.chainid)
+            ), 
+            "/OsmiNode/"
+        );
     }
 
     /**

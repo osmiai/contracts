@@ -25,5 +25,5 @@ task("osmi-upgrade-node", "Upgrade OsmiNode implementation.")
     .setAction(async (args, hre) => {
         // TODO: SNICHOLS: clean this up
         const { OsmiNode } = await loadDeployedAddresses(hre)
-        // await OsmiNode.upgradeToAndCall("0xbC66EdCd35a91A682125753243984E9a54e700BB", "0x")
+        // await OsmiNode.upgradeToAndCall("0x1f9254E03273B2ac0DD5a2Fd1b7899c5522090a7", "0x")
     })    
