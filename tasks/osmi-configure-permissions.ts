@@ -35,6 +35,8 @@ masterRoleSettings.set(MINTER_ROLE, {
     guardian: MANAGER_ROLE,
 })
 
+// 0x7766fb1c
+
 // token function roles
 const tokenFunctionRoles = (() => {
     const functionRoles = new Map<string, BigNumberish>()
@@ -103,6 +105,8 @@ const nodeFactoryFunctionRoles = (() => {
 })()
 
 function selector(v: string): BytesLike {
+    // const x = id(v)
+    // console.log(`selector("${v}") = ${x}`)
     return getBytes(id(v).substring(0, 10))
 }
 
@@ -222,7 +226,7 @@ subtask("daily-distribution")
     .setAction(async (taskArgs, hre) => {
         console.log("osmi-configure-permissions:daily-distribution")
         const { OsmiAccessManager, OsmiDailyDistribution } = await loadDeployedAddresses(hre)
-        await applyFunctionRoles(nodeNftFunctionRoles, OsmiAccessManager, OsmiDailyDistribution)
+        await applyFunctionRoles(dailyDistributionFunctionRoles, OsmiAccessManager, OsmiDailyDistribution)
         // grant minting role to daily distribution
         const [isMember] = await OsmiAccessManager.hasRole(MINTER_ROLE, OsmiDailyDistribution)
         if (!isMember) {
