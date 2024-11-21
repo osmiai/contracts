@@ -189,20 +189,19 @@ subtask("accounts")
         console.log("osmi-configure-permissions:accounts")
         const [admin] = await hre.ethers.getSigners()
         const { OsmiAccessManager } = await loadDeployedAddresses(hre)
-        // grant manager role to admin
-        {
-            const [isMember] = await OsmiAccessManager.hasRole(MANAGER_ROLE, admin)
+        async function grantRole(account: AddressLike, role: BigNumberish) {
+            const [isMember] = await OsmiAccessManager.hasRole(role, account)
             if (!isMember) {
-                await OsmiAccessManager.grantRole(MANAGER_ROLE, admin, 0)
+                await OsmiAccessManager.grantRole(role, account, 0)
             }
         }
-        // grant minter role to admin
-        {
-            const [isMember] = await OsmiAccessManager.hasRole(MINTER_ROLE, admin)
-            if (!isMember) {
-                await OsmiAccessManager.grantRole(MINTER_ROLE, admin, 0)
-            }
+        async function grantManager(account: AddressLike) {
+            await grantRole(account, MANAGER_ROLE)
+            await grantRole(account, MINTER_ROLE)
         }
+        // grant manager role to admin and osmi-overseer
+        await grantManager(admin);
+        await grantManager("0x97932ed7cec8cEdf53e498F0efF5E55a54A0BB98")
     })
 
 subtask("token")
