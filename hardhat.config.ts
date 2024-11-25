@@ -11,6 +11,8 @@ import "./tasks/osmi-distribution"
 const ALCHEMY_URL_SEPOLIA = vars.get("ALCHEMY_URL_SEPOLIA")
 const ALCHEMY_URL_MAINNET = vars.get("ALCHEMY_URL_MAINNET")
 const OSMI_ADMIN_ADDRESS = vars.get("OSMI_ADMIN_ADDRESS")
+const OSMI_PROJECT_ADDRESS = vars.get("OSMI_PROJECT_ADDRESS")
+const OSMI_OVERSEER_PRIVATE_KEY = vars.get("OSMI_OVERSEER_PRIVATE_KEY")
 
 export default {
   solidity: {
@@ -25,15 +27,19 @@ export default {
   networks: {
     mainnet: {
       url: ALCHEMY_URL_MAINNET,
+      // accounts: [OSMI_OVERSEER_PRIVATE_KEY],
       ledgerAccounts: [
         OSMI_ADMIN_ADDRESS,
+        OSMI_PROJECT_ADDRESS,
       ],
     },
     sepolia: {
       url: ALCHEMY_URL_SEPOLIA,
       ledgerAccounts: [
         OSMI_ADMIN_ADDRESS,
+        OSMI_PROJECT_ADDRESS,
       ],
+      // accounts: [OSMI_OVERSEER_PRIVATE_KEY],
     }
   }
 }

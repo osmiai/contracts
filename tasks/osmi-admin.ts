@@ -1,5 +1,6 @@
 import { task, vars } from "hardhat/config"
 import { loadDeployedAddresses } from "./utils"
+import { AddressLike, BigNumberish } from "ethers"
 
 task("osmi-close", "Close OsmiToken.")
     .setAction(async (args, hre) => {
@@ -42,9 +43,75 @@ task("osmi-mint-alpha-nodes", "Mint those alpha nodes")
         }
     })
 
+task("osmi-mint-team-nodes", "Mint 250 nodes for the team.")
+    .setAction(async (args, hre) => {
+        const { OsmiNode } = await loadDeployedAddresses(hre)
+        interface Mint {
+            token: bigint
+            address: AddressLike
+        }
+        const mints: Mint[] = []
+        let token = 4n
+        // grant snichols
+        for (let i = 0; i < 75; i++) {
+            mints.push({ token: token, address: "0x72e03eB06BFfb113dd0040E455F3423922275092" })
+            token++
+        }
+        // grant eric
+        for (let i = 0; i < 75; i++) {
+            mints.push({ token: token, address: "0xb427419E84855957801F2ef1272Af02825FA6322" })
+            token++
+        }
+        // grant chuter
+        for (let i = 0; i < 75; i++) {
+            mints.push({ token: token, address: "0xf11c6Ae858Dd1e9a28DB4cfcd41Ba7E1aF59CE50" })
+            token++
+        }
+        // grant qasim
+        for (let i = 0; i < 25; i++) {
+            mints.push({ token: token, address: "0xC5c5Bb1aD74FF8825D10bba248f60608DCdC5c86" })
+            token++
+        }
+        if (mints.length != 250) {
+            throw new Error("mint count mismatch")
+        }
+        const overseer = await hre.ethers.getSigner("0x97932ed7cec8cEdf53e498F0efF5E55a54A0BB98")
+        console.log("overseer:", overseer.address)
+        const overseerOsmiNode = OsmiNode.connect(overseer)
+        const totalSupply = await overseerOsmiNode.getTotalSupply()
+        for (let node of mints) {
+            if (totalSupply > node.token) {
+                const owner = await overseerOsmiNode.ownerOf(node.token)
+                console.log(`token: ${node.token} owner: ${owner}`)
+            } else {
+                console.log(`token: ${node.token} owner: null`)
+                console.log(`   minting token: ${node.token} to address: ${node.address}`)
+                await overseerOsmiNode.safeMint(node.address)
+            }
+        }
+    })
+
+// task("osmi-burn", "Burn from the project fund.")
+//     .setAction(async (args, hre) => {
+//         const { OsmiToken } = await loadDeployedAddresses(hre)
+//         const projectFund = await hre.ethers.getSigner("0xAdEE73C733cD77b9Ca906803bBE2cd5064D28487")
+//         if (projectFund.address != "0xAdEE73C733cD77b9Ca906803bBE2cd5064D28487") {
+//             throw new Error("project fund address not found")
+//         }
+//         const amount = 3_000_000_000000000000000000n
+//         await OsmiToken.connect(projectFund).burn(amount)
+//     })
+
+// task("osmi-mint-project", "Mint to the project fund")
+//     .setAction(async (args, hre) => {
+//         const { OsmiToken } = await loadDeployedAddresses(hre)
+//         const amount = 2_250_000_000000000000000000n
+//         await OsmiToken.mint("0xAdEE73C733cD77b9Ca906803bBE2cd5064D28487", amount)
+//     })
+
 task("osmi-sign-message", "Manually sign a message.")
     .setAction(async (args, hre) => {
-        const [ admin ] = await hre.ethers.getSigners()
+        const [admin] = await hre.ethers.getSigners()
         const response = await admin.signMessage("[Etherscan.io 23/11/2024 16:33:25] I, hereby verify that I am the owner/creator of the address [0xbf9a19e7e926d5d4c1a789f76db0af23ca9854ab]")
         console.log(response)
     })
@@ -55,4 +122,11 @@ task("osmi-upgrade-node", "Upgrade OsmiNode implementation.")
         // TODO: SNICHOLS: clean this up
         const { OsmiNode } = await loadDeployedAddresses(hre)
         // await OsmiNode.upgradeToAndCall("0x14EA14A50fE434B5f7d9d337a5f096d7054e3d8e", "0x")
+    })
+
+task("osmi-upgrade-node-factory", "Upgrade OsmiNodeFactory implementation.")
+    .setAction(async (args, hre) => {
+        // TODO: SNICHOLS: clean this up
+        const { OsmiNodeFactory } = await loadDeployedAddresses(hre)
+        // await OsmiNodeFactory.upgradeToAndCall("0xaCeB2A29C3F4925a19924E8a6Fe865Af0e8E3286", "0x")
     })

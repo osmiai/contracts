@@ -181,8 +181,11 @@ contract OsmiNodeFactory is Initializable, AccessManagedUpgradeable, UUPSUpgrade
     }
 
     function _buyOsmiNode(OsmiNodePurchaseTicket calldata ticket, ERC20PermitAllowance calldata allowance) internal returns (uint256) {
-        require(allowance.spender == address(this), "this is not the allowance spender");
+        require(allowance.spender == address(this), "this is not the allowance spender");       
         OsmiNodeFactoryStorage storage $ = _getOsmiNodeFactoryStorageLocation();
+        // ensure we're within our node sale limit
+        // TODO: SNICHOLS: generalize this
+        require($.nodeContract.getTotalSupply() < 1250, "no more nodes available at this tier");
         // consume purchase ticket
         _consumePurchaseTicket(
             ticket.signer,
