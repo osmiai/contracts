@@ -185,7 +185,7 @@ contract OsmiNodeFactory is Initializable, AccessManagedUpgradeable, UUPSUpgrade
         OsmiNodeFactoryStorage storage $ = _getOsmiNodeFactoryStorageLocation();
         // ensure we're within our node sale limit
         // TODO: SNICHOLS: generalize this
-        require($.nodeContract.getTotalSupply() < 1250, "no more nodes available at this tier");
+        require($.nodeContract.getTotalSupply() < 1254, "no more nodes available at this tier");
         // consume purchase ticket
         _consumePurchaseTicket(
             ticket.signer,

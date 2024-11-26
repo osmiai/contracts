@@ -121,12 +121,19 @@ task("osmi-upgrade-node", "Upgrade OsmiNode implementation.")
     .setAction(async (args, hre) => {
         // TODO: SNICHOLS: clean this up
         const { OsmiNode } = await loadDeployedAddresses(hre)
-        // await OsmiNode.upgradeToAndCall("0x14EA14A50fE434B5f7d9d337a5f096d7054e3d8e", "0x")
+        // await OsmiNode.upgradeToAndCall("", "0x")
     })
 
 task("osmi-upgrade-node-factory", "Upgrade OsmiNodeFactory implementation.")
     .setAction(async (args, hre) => {
         // TODO: SNICHOLS: clean this up
         const { OsmiNodeFactory } = await loadDeployedAddresses(hre)
-        // await OsmiNodeFactory.upgradeToAndCall("0xaCeB2A29C3F4925a19924E8a6Fe865Af0e8E3286", "0x")
+        // await OsmiNodeFactory.upgradeToAndCall("", "0x")
+    })
+
+task("osmi-upgrade-daily-distribution", "Upgrade OsmiDailyDistribution implementation.")
+    .setAction(async (args, hre) => {
+        // TODO: SNICHOLS: clean this up
+        const { OsmiDailyDistribution } = await loadDeployedAddresses(hre)
+        await OsmiDailyDistribution.upgradeToAndCall("", "0x")
     })

@@ -94,6 +94,11 @@ contract OsmiDailyDistribution is Initializable, AccessManagedUpgradeable, UUPSU
      */
     uint constant MaxDailyEmission = RatioDenominator/10;
 
+    /**
+     * @dev How much leeway is there in distribution timing?
+     */
+    uint constant DistributionLeeway = 1 hours;
+
     /// @custom:storage-location erc7201:ai.osmi.storage.OsmiDailyDistribution
     struct OsmiDailyDistributionStorage {
         /**
@@ -236,7 +241,7 @@ contract OsmiDailyDistribution is Initializable, AccessManagedUpgradeable, UUPSU
         OsmiDailyDistributionStorage storage $ = _getOsmiDailyDistributionStorage();
 
         // check if we're on cooldown
-        uint nextDistributionTime = $.lastDistributionTime + 1 days;
+        uint nextDistributionTime = $.lastDistributionTime + 1 days - DistributionLeeway;
         if (nextDistributionTime > block.timestamp) {
             revert DistributionOnCooldown(nextDistributionTime);
         }
