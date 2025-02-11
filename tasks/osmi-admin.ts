@@ -91,6 +91,18 @@ task("osmi-mint-team-nodes", "Mint 250 nodes for the team.")
         }
     })
 
+task("unlock-node", "Remove the transfer lock for a node.")
+    .setAction(async (args, hre) => {
+        // const { OsmiNode } = await loadDeployedAddresses(hre)
+        // const tokens = [76, 77, 78]
+        // for(let i = 0; i < tokens.length; i++) {
+        //     const token = tokens[i]
+        //     await OsmiNode.setTransferLockedUntil(token, 1764075071n)
+        //     // const lockedUntil = await OsmiNode.getTransferLockedUntil(token)
+        //     // console.log("token:", token, "locked until:", lockedUntil)
+        // }
+    })
+
 // task("osmi-burn", "Burn from the project fund.")
 //     .setAction(async (args, hre) => {
 //         const { OsmiToken } = await loadDeployedAddresses(hre)
@@ -121,19 +133,19 @@ task("osmi-upgrade-node", "Upgrade OsmiNode implementation.")
     .setAction(async (args, hre) => {
         // TODO: SNICHOLS: clean this up
         const { OsmiNode } = await loadDeployedAddresses(hre)
-        // await OsmiNode.upgradeToAndCall("", "0x")
+        // await OsmiNode.upgradeToAndCall("<address>", "0x")
     })
 
 task("osmi-upgrade-node-factory", "Upgrade OsmiNodeFactory implementation.")
     .setAction(async (args, hre) => {
         // TODO: SNICHOLS: clean this up
         const { OsmiNodeFactory } = await loadDeployedAddresses(hre)
-        // await OsmiNodeFactory.upgradeToAndCall("", "0x")
+        // await OsmiNodeFactory.upgradeToAndCall("<address>", "0x")
     })
 
 task("osmi-upgrade-daily-distribution", "Upgrade OsmiDailyDistribution implementation.")
     .setAction(async (args, hre) => {
         // TODO: SNICHOLS: clean this up
         const { OsmiDailyDistribution } = await loadDeployedAddresses(hre)
-        await OsmiDailyDistribution.upgradeToAndCall("", "0x")
+        // await OsmiDailyDistribution.upgradeToAndCall("<address>", "0x")
     })
