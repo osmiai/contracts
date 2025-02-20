@@ -9,7 +9,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts/utils/math/Math.sol";
 
 /**
- * @dev OsmiDistribution implements the daily minting of $OSMI into organizational pools.
+ * @dev OsmiDailyDistribution implements the daily minting of $OSMI into organizational pools.
  */
 /// @custom:security-contact contact@osmi.ai
 contract OsmiDailyDistribution is Initializable, AccessManagedUpgradeable, UUPSUpgradeable {
