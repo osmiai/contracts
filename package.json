@@ -13,7 +13,7 @@
     "chai": "^4.4.1",
     "eth-provider": "^0.13.7",
     "ethers": "^6.13.4",
-    "hardhat": "^2.22.14",
+    "hardhat": "^2.22.18",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.5"
   },

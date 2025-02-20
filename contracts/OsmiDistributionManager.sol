@@ -3,21 +3,22 @@
 pragma solidity ^0.8.22;
 
 import {IOsmiToken} from "./IOsmiToken.sol";
+import {IGalaBridge} from "./IGalaBridge.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EIP712Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
 import {NoncesUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/NoncesUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import "@openzeppelin/contracts/utils/math/Math.sol";
+import "@openzeppelin/contracts/utils/Strings.sol";
 
 /**
  * @dev OsmiDistributionManager manages unlocked daily distribution.
  */
 /// @custom:security-contact contact@osmi.ai
 contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUPSUpgradeable, EIP712Upgradeable, NoncesUpgradeable {
-    bytes32 private constant CLAIM_TICKET_TYPEHASH = 
-        keccak256("ClaimTicket(address signer,address customer,uint256 price,uint256 nonce,uint256 deadline)");
+    bytes32 private constant TICKET_TYPEHASH = 
+        keccak256("Ticket(address signer,address wallet,address pool,bytes32 expectedClaimState,bytes32 newClaimState,uint256 amount,uint256 nonce,uint256 deadline)");
 
     /**
      * @dev Emitted when token contract is changed.
@@ -25,19 +26,39 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
     event TokenContractChanged(IOsmiToken tokenContract);
 
     /**
-     * @dev Emitted when claim ticket signer is changed.
+     * @dev Emitted when token pool is changed.
      */
-    event ClaimTicketSignerChanged(address claimTicketSigner);
+    event TokenPoolChanged(address tokenPool);
+
+    /**
+     * @dev Emitted when ticket signer is changed.
+     */
+    event TicketSignerChanged(address claimTicketSigner);
+
+    /**
+     * @dev Emitted when a bridge contract is changed.
+     */
+    event BridgeContractChanged(Bridge bridge, address bridgeContract);
 
     /**
      * @dev Emitted when claim ticket is redeemed by a user.
      */
-    event ClaimTicketRedeemed(address user, uint256 amount, bytes32 state);
+    event TicketRedeemed(address user, uint256 amount, bytes32 state);
 
     /**
-     * @dev Invalid claim ticket signer.
+     * @dev Emitted when tokens are claimed.
      */
-    error InvalidClaimTicketSigner(address signer, address one, address two);
+    event TokensClaimed(address from, address to, uint256 amount);
+
+    /**
+     * @dev Invalid ticket signer.
+     */
+    error InvalidTicketSigner(address signer, address one, address two);
+
+    /**
+     * @dev Invalid token pool.
+     */
+    error InvalidTokenPool(address pool, address expected);
 
     /**
      * @dev Unexpected claimState for a user.
@@ -55,13 +76,27 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
     error InvalidSigner(address signer, address owner);
 
     /**
-     * @dev DistributionClaimTicket contains a signed ticket from the Osmi backend 
-     * entitling a wallet to tranfser tokens from the node pool.
+     * @dev Insufficient balance to complete a claim.
      */
-    struct DistributionClaimTicket {
+    error InsufficientBalance(address spender, uint256 balance, uint256 needed);
+
+    /**
+     * @dev Bridge identifies bridges we can use.
+     */
+    enum Bridge {
+        Invalid,
+        GalaChain,
+        Max
+    }
+
+    /**
+     * @dev Ticket contains a signed ticket from the Osmi backend entitling a wallet to tranfser tokens 
+     * from the node pool.
+     */
+    struct Ticket {
         address signer;
         address wallet;
-        address fromPool;
+        address pool;
         bytes32 expectedClaimState;
         bytes32 newClaimState;
         uint256 amount;
@@ -71,6 +106,9 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
         bytes32 s;
     }
 
+    /**
+     * @dev Wallet tracks state for a wallet address.
+     */
     struct Wallet {
         bytes32 claimState;
         uint256 balance;
@@ -79,14 +117,16 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
     /// @custom:storage-location erc7201:ai.osmi.storage.OsmiDistributionManager
     struct OsmiDistributionManagerStorage {
         IOsmiToken tokenContract;
-        address [2]claimTicketSigners;
+        address tokenPool;
+        address [2]ticketSigners;
         mapping(address => Wallet) wallets;
+        mapping(Bridge => address) bridges;
     }
 
     // keccak256(abi.encode(uint256(keccak256("ai.osmi.storage.OsmiDistributionManager")) - 1)) & ~bytes32(uint256(0xff))
-    bytes32 private constant OsmiDistributionManagerStorageLocation = 0x;
+    bytes32 private constant OsmiDistributionManagerStorageLocation = 0x55830a805815e4d506db4501e6719bc7b974e594ecdefb09d1856bf6a5d79500;
 
-    function _getOsmDistributionManagerStorage() private pure returns (OsmiDistributionManagerStorage storage $) {
+    function _getOsmiDistributionManagerStorage() private pure returns (OsmiDistributionManagerStorage storage $) {
         assembly {
             $.slot := OsmiDistributionManagerStorageLocation
         }
@@ -97,14 +137,20 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
         _disableInitializers();
     }
 
-    function initialize(address initialAuthority, address tokenContract, address claimTicketSigner) initializer public {
+    function initialize(
+        address initialAuthority, 
+        address tokenContract, 
+        address tokenPool, 
+        address ticketSigner
+    ) initializer public {
         __AccessManaged_init(initialAuthority);
         __Nonces_init();
         __UUPSUpgradeable_init();
         __EIP712_init("OsmiDistributionManager", "1");
         __UUPSUpgradeable_init();
         _setTokenContract(tokenContract);
-        _setClaimTicketSigner(claimTicketSigner);
+        _setTokenPool(tokenPool);
+        _setTicketSigner(ticketSigner);
     }
 
     /**
@@ -117,6 +163,44 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
     {}
 
     /**
+     * @dev Public function to get a bridge contract address.
+     */
+    function getBridgeContract(Bridge bridge) external view returns(address) {
+        return _getBridgeContract(bridge);
+    }
+
+    function _getBridgeContract(Bridge bridge) internal view returns(address) {
+        require(bridge != Bridge.GalaChain, "unsupported bridge");
+        OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
+        return $.bridges[bridge];
+    }
+
+    /**
+     * @dev Restricted function to get a bridge contract address.
+     */
+    function setBridgeContract(Bridge bridge, address bridgeContract) restricted external {
+        require(bridge != Bridge.GalaChain, "unsupported bridge");
+        OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
+        if($.bridges[bridge] == bridgeContract) {
+            return;
+        }
+        $.bridges[bridge] = bridgeContract;
+        emit BridgeContractChanged(bridge, bridgeContract);
+    }
+
+    /**
+     * @dev Public function to get the token contract.
+     */
+    function getTokenContract() external view returns(IOsmiToken tokenContract) {
+        return _getTokenContract();
+    }
+
+    function _getTokenContract() internal view returns(IOsmiToken tokenContract) {
+        OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
+        return $.tokenContract;
+    }
+
+    /**
      * @dev Restricted function to set the token contract for purchasing.
      */
     function setTokenContract(address tokenContract) restricted external {
@@ -125,7 +209,7 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
 
     function _setTokenContract(address tokenContract) internal {
         require(tokenContract != address(0), "token contract can't be zero");
-        OsmiDistributionManagerStorage storage $ = _getOsmDistributionManagerStorage();
+        OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
         if($.tokenContract == IOsmiToken(tokenContract)) {
             return;
         }
@@ -134,75 +218,236 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
     }
 
     /**
-     * @dev Return the currently recognized claim ticket signer addresses.
+     * @dev Public function to get the token pool.
      */
-    function getClaimTicketSigners() external view returns(address,address) {
-        OsmiDistributionManagerStorage storage $ = _getOsmDistributionManagerStorage();
-        return ($.claimTicketSigners[0], $.claimTicketSigners[1]);
+    function getTokenPool() external view returns(address tokenPool) {
+        return _getTokenPool();
+    }
+
+    function _getTokenPool() internal view returns(address tokenPool) {
+        OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
+        return $.tokenPool;
     }
 
     /**
-     * @dev Restricted function to set the claim ticket signer. Signers are stored
+     * @dev Restricted function to set the address of the token pool.
+     */
+    function setTokenPool(address tokenPool) restricted external {
+        return _setTokenPool(tokenPool);
+    }
+
+    function _setTokenPool(address tokenPool) internal {
+        require(tokenPool != address(0), "token pool can't be zero");
+        OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
+        if($.tokenPool == tokenPool) {
+            return;
+        }
+        $.tokenPool = tokenPool;
+        emit TokenPoolChanged($.tokenPool);
+    }
+
+    /**
+     * @dev Return the currently recognized claim ticket signer addresses.
+     */
+    function getTicketSigners() external view returns(address,address) {
+        return _getTicketSigners();
+    }
+
+    function _getTicketSigners() internal view returns(address,address) {
+        OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
+        return ($.ticketSigners[0], $.ticketSigners[1]);
+    }
+
+    /**
+     * @dev Restricted function to set the ticket signer. Signers are stored
      * in a double-buffered manner. This function only updates the latest signer, pushing
      * the previous signer into the second slot. This allows us to rotate out signing
      * accounts without downtime.
      */
-    function setClaimTicketSigner(address signer) restricted external {
-        return _setClaimTicketSigner(signer);
+    function setTicketSigner(address signer) restricted external {
+        _setTicketSigner(signer);
     }
 
-    function _setClaimTicketSigner(address signer) internal {
+    function _setTicketSigner(address signer) internal {
         require (signer != address(0), "signer address can't be zero");
-        OsmiDistributionManagerStorage storage $ = _getOsmDistributionManagerStorage();
-        if($.claimTicketSigners[0] == signer) {
+        OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
+        if($.ticketSigners[0] == signer) {
             return;
         }
-        $.claimTicketSigners[1] = $.claimTicketSigners[0];
-        $.claimTicketSigners[0] = signer;
-        emit ClaimTicketSignerChanged(signer);
+        $.ticketSigners[1] = $.ticketSigners[0];
+        $.ticketSigners[0] = signer;
+        emit TicketSignerChanged(signer);
     }
 
-    function _consumeClaimTicket(DistributionClaimTicket ticket) internal {
-        _verifyClaimTicket(ticket);
-        _applyClaimTicket(ticket);
+    /**
+     * @dev Restricted external function to redeem a distribution ticket and then claim tokens from the balance. The
+     * new balance is returned.
+     */
+    function redeemAndClaim(Ticket calldata ticket, uint256 amount) restricted external returns(uint256 balance) {
+        _redeemTicket(ticket);
+        address caller = _msgSender();
+        return _claimTokens(caller, caller, amount);
     }
 
-    function _verifyClaimTicket(DistributionClaimTicket ticket) internal {
+    /**
+     * @dev Restricted external function to redeem a distribution ticket and then bridge tokens from the balance. The
+     * new balance is returned.
+     */
+    function redeemAndBridge(Ticket calldata ticket, uint256 amount, Bridge bridge) restricted external returns(uint256 balance) {
+        _redeemTicket(ticket);
+        address caller = _msgSender();
+        return _bridgeTokens(caller, caller, amount, bridge);
+    }
+
+    /**
+     * @dev Restricted external function to bridge tokens from the token pool into the caller's wallet on the target
+     * bridge. The updated balance is returned. This function reverts on any issues.
+     */
+    function bridgeTokens(uint256 amount, Bridge bridge) restricted external returns(uint256 balance) {
+        address caller = _msgSender();
+        return _bridgeTokens(caller, caller, amount, bridge);
+    }
+
+    /**
+     * @dev Internal function to bridge tokens from the token pool into a wallet on the target bridge. The updated
+     * balance is returned. This function reverts on any issues.
+     */
+    function _bridgeTokens(address from, address to, uint256 amount, Bridge bridge) internal returns(uint256 balance) {
+        // first claim tokens to the destination        
+        balance = _claimTokens(from, to, amount);
+        // next bridge to the target
+        address bridgeContract = _getBridgeContract(bridge);
+        require(bridgeContract != address(0), "bridge unavailable");
+        // TODO: SNICHOLS: generalize this
+        string memory recipient = Strings.toHexString(to);
+        // SNICHOLS: gala's bridge requires the destination address to be without 0x prefix, so we
+        // hack the string that comes back from toHexString to save an allocation.
+        /// @solidity memory-safe-assembly
+        assembly {
+            let len := sub(mload(recipient), 2)
+            mcopy(add(recipient, 0x20), add(recipient, 0x22), len)
+            mstore(recipient, len)
+        }
+        IGalaBridge(bridgeContract).bridgeOut(
+            address(_getTokenContract()),
+            amount,
+            0,
+            1,
+            bytes(string.concat("eth|", recipient))
+        );
+        return balance;
+    }
+
+    /**
+     * @dev Restricted external function to transfer `amount` tokens from the token pool into the caller's wallet. The
+     * updated balance is returned. This function reverts on any issues.
+     */
+    function claimTokens(uint256 amount) restricted external returns(uint256 balance) {
+        address caller = _msgSender();
+        return _claimTokens(caller, caller, amount);
+    }
+
+    /**
+     * @dev Internal function to transfer `amount` tokens from the token pool between from and to. The from wallet must
+     * have sufficient balance in order to complete the transfer. This function reverts on any issues.
+     */
+    function _claimTokens(address from, address to, uint256 amount) internal returns(uint256 balance) {
+        require(from != address(0), "from address can't be zero");
+        require(to != address(0), "to address can't be zero");
+        require(amount != 0, "amount can't be zero");
+        OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
+        // get the source wallet
+        Wallet storage wallet = $.wallets[from];
+        // check the balance
+        if(wallet.balance < amount) {
+            revert InsufficientBalance(from, wallet.balance, amount-wallet.balance);
+        }
+        // transfer from node pool to destination
+        $.tokenContract.transferFrom($.tokenPool, to, amount);
+        // update balance
+        wallet.balance -= amount;
+        emit TokensClaimed(from, to, amount);
+        return wallet.balance;
+    }
+
+    /**
+     * @dev Restricted external function to redeem a distribution ticket. If the ticket is valid, it is consumed and 
+     * the ticket's balance is credited to the ticket's wallet. This credit is applied to the internal balance
+     * of the wallet. Use claimTokens to transfer internal balance to an ethereum wallet. The updated wallet balance is 
+     * returned. This function will revert on any issues.
+     */
+    function redeem(Ticket calldata ticket) restricted external returns(uint256 balance) {
+        return _redeemTicket(ticket);
+    }
+
+    /**
+     * @dev Internal function to redeem a distribution ticket. The ticket is verified then applied. This function will
+     * revert on any issues.
+     */
+    function _redeemTicket(Ticket calldata ticket) internal returns(uint256 balance) {
+        _verifyTicket(ticket);
+        return _applyTicket(ticket);
+    }
+
+    /**
+     * @dev Internal function to verify a distribution ticket. The signature is verified along with the nonce. This 
+     * function will revert on any issues.
+     */
+    function _verifyTicket(Ticket calldata ticket) internal {
         if (block.timestamp > ticket.deadline) {
             revert ExpiredSignature(ticket.deadline);
         }
-        _validateClaimTicketSigner(ticket.signer);
+        _validateTokenPool(ticket.pool);
+        _validateTicketSigner(ticket.signer);
         bytes32 structHash = keccak256(abi.encode(
-            CLAIM_TICKET_TYPEHASH, 
+            TICKET_TYPEHASH, 
             ticket.signer, 
             ticket.wallet, 
-            ticket.fromPool,
+            ticket.pool,
             ticket.expectedClaimState,
             ticket.newClaimState,
             ticket.amount, 
             _useNonce(ticket.wallet), 
-            deadline
+            ticket.deadline
         ));
         bytes32 hash = _hashTypedDataV4(structHash);
-        address recoveredSigner = ECDSA.recover(hash, v, r, s);
-        if (recoveredSigner != signer) {
-            revert InvalidSigner(recoveredSigner, signer);
+        address recoveredSigner = ECDSA.recover(hash, ticket.v, ticket.r, ticket.s);
+        if (recoveredSigner != ticket.signer) {
+            revert InvalidSigner(recoveredSigner, ticket.signer);
         }
     }
 
-    function _applyClaimTicket(DistributionClaimTicket ticket) internal {
-        OsmiDistributionManagerStorage storage $ = _getOsmDistributionManagerStorage();
-        if(expected != $.claimState[ticket.wallet]) {
-            revert UnexpectedClaimState(wicket.wallet, expectedClaimState, $.claimState[ticket.wallet]);
+    /**
+     * @dev Internal function to apply a distribution ticket. The ticket is assumed to be valid. This function reverts
+     * on any issues.
+     */
+    function _applyTicket(Ticket calldata ticket) internal returns (uint256 balance) {
+        OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
+        Wallet storage wallet = $.wallets[ticket.wallet];
+        if(ticket.expectedClaimState != wallet.claimState) {
+            revert UnexpectedClaimState(ticket.wallet, ticket.expectedClaimState, wallet.claimState);
         }
-        $.claimState[ticket.wallet] = newClaimState;
-        $.balance[ticket.wallet] += ticket.amount;
+        wallet.claimState = ticket.newClaimState;
+        wallet.balance += ticket.amount;
+        emit TicketRedeemed(ticket.wallet, ticket.amount, wallet.claimState);
+        return wallet.balance;
     }
 
-    function _validateClaimTicketSigner(address v) internal view {
-        OsmiDistributionManagerStorage storage $ = _getOsmDistributionManagerStorage();
-        if (v != $.claimTicketSigners[0] && v != $.claimTicketSigners[1]) {
-            revert InvalidClaimTicketSigner(v, $.claimTicketSigners[0], $.claimTicketSigners[1]);
+    /**
+     * @dev Internal function to check if the given address is on the ticket signer list. This function reverts
+     * on any issues.
+     */
+    function _validateTicketSigner(address v) internal view {
+        OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
+        if (v != $.ticketSigners[0] && v != $.ticketSigners[1]) {
+            revert InvalidTicketSigner(v, $.ticketSigners[0], $.ticketSigners[1]);
         }
     }
+
+    function _validateTokenPool(address v) internal view {
+        OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
+        if (v != $.tokenPool) {
+            revert InvalidTokenPool(v, $.tokenPool);
+        }
+    }    
 }
