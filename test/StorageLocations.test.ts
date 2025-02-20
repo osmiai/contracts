@@ -1,4 +1,5 @@
 import { expect } from "chai";
+import { vars, task } from "hardhat/config"
 import hre from "hardhat";
 
 describe("StorageLocations", () => {

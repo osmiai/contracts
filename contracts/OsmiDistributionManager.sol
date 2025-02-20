@@ -51,6 +51,11 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
     event TokensClaimed(address from, address to, uint256 amount);
 
     /**
+     * @dev Emitted when tokens are bridged.
+     */
+    event TokensBridged(address user, uint256 amount, Bridge bridge);
+
+    /**
      * @dev Invalid ticket signer.
      */
     error InvalidTicketSigner(address signer, address one, address two);
@@ -84,7 +89,7 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
      * @dev Bridge identifies bridges we can use.
      */
     enum Bridge {
-        Invalid,
+        None,
         GalaChain,
         Max
     }
@@ -179,7 +184,7 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
      * @dev Restricted function to get a bridge contract address.
      */
     function setBridgeContract(Bridge bridge, address bridgeContract) restricted external {
-        require(bridge != Bridge.GalaChain, "unsupported bridge");
+        require(bridge > Bridge.None && bridge < Bridge.Max, "unsupported bridge");
         OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
         if($.bridges[bridge] == bridgeContract) {
             return;
@@ -313,29 +318,47 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
      * balance is returned. This function reverts on any issues.
      */
     function _bridgeTokens(address from, address to, uint256 amount, Bridge bridge) internal returns(uint256 balance) {
-        // first claim tokens to the destination        
+        // first claim tokens to the destination
         balance = _claimTokens(from, to, amount);
         // next bridge to the target
         address bridgeContract = _getBridgeContract(bridge);
         require(bridgeContract != address(0), "bridge unavailable");
-        // TODO: SNICHOLS: generalize this
-        string memory recipient = Strings.toHexString(to);
-        // SNICHOLS: gala's bridge requires the destination address to be without 0x prefix, so we
-        // hack the string that comes back from toHexString to save an allocation.
-        /// @solidity memory-safe-assembly
-        assembly {
-            let len := sub(mload(recipient), 2)
-            mcopy(add(recipient, 0x20), add(recipient, 0x22), len)
-            mstore(recipient, len)
-        }
         IGalaBridge(bridgeContract).bridgeOut(
             address(_getTokenContract()),
             amount,
             0,
             1,
-            bytes(string.concat("eth|", recipient))
+            bytes(addressToGalaRecipient(to))
         );
+        emit TokensBridged(to, amount, bridge);
         return balance;
+    }
+
+    function addressToGalaRecipient(address addr) public pure returns(string memory) {
+        unchecked {
+            bytes4 prefix = "eth|";
+            bytes16 hex_digits = "0123456789abcdef";
+            string memory buffer = new string(44);
+            uint256 lptr;
+            uint256 rptr;
+            /// @solidity memory-safe-assembly
+            assembly {
+                lptr := add(buffer, 32)
+                mstore(lptr, prefix)
+                lptr := add(lptr, 4)
+                rptr := add(lptr, 40)
+            }
+            uint256 value = uint256(uint160(addr));
+            while(rptr > lptr) {
+                rptr--;
+                /// @solidity memory-safe-assembly
+                assembly {
+                    mstore8(rptr, byte(and(value, 0xf), hex_digits))
+                }
+                value >>= 4;
+            }
+            return buffer;
+        }
     }
 
     /**
