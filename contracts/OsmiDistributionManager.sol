@@ -334,7 +334,10 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
         return balance;
     }
 
-    function addressToGalaRecipient(address addr) public pure returns(string memory) {
+    /**
+     * @dev Internal function to create a GalaChain recipent string from an address.
+     */
+    function addressToGalaRecipient(address addr) internal pure returns(string memory) {
         unchecked {
             bytes4 prefix = "eth|";
             bytes16 hex_digits = "0123456789abcdef";
