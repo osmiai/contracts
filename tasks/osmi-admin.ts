@@ -1,6 +1,6 @@
-import { task, vars } from "hardhat/config"
+import { task } from "hardhat/config"
 import { loadDeployedAddresses } from "./utils"
-import { AddressLike, BigNumberish } from "ethers"
+import { AddressLike } from "ethers"
 
 task("osmi-close", "Close OsmiToken.")
     .setAction(async (args, hre) => {
@@ -127,7 +127,6 @@ task("osmi-sign-message", "Manually sign a message.")
         const response = await admin.signMessage("[Etherscan.io 23/11/2024 16:33:25] I, hereby verify that I am the owner/creator of the address [0xbf9a19e7e926d5d4c1a789f76db0af23ca9854ab]")
         console.log(response)
     })
-
 
 task("osmi-upgrade-node", "Upgrade OsmiNode implementation.")
     .setAction(async (args, hre) => {
