@@ -18,7 +18,7 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 /// @custom:security-contact contact@osmi.ai
 contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUPSUpgradeable, EIP712Upgradeable, NoncesUpgradeable {
     bytes32 private constant TICKET_TYPEHASH = 
-        keccak256("Ticket(address signer,address wallet,address pool,bytes32 expectedClaimState,bytes32 newClaimState,uint256 amount,uint256 nonce,uint256 deadline)");
+        keccak256("Ticket(address signer,address wallet,address pool,uint64 startTime,uint64 endTime,uint256 amount,uint256 nonce,uint256 deadline)");
 
     /**
      * @dev Emitted when token contract is changed.
@@ -33,7 +33,7 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
     /**
      * @dev Emitted when ticket signer is changed.
      */
-    event TicketSignerChanged(address claimTicketSigner);
+    event TicketSignerChanged(address ticketSigner);
 
     /**
      * @dev Emitted when a bridge contract is changed.
@@ -102,8 +102,8 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
         address signer;
         address wallet;
         address pool;
-        bytes32 expectedClaimState;
-        bytes32 newClaimState;
+        uint64 startTime;
+        uint64 endTime;
         uint256 amount;
         uint256 deadline;
         uint8 v;
@@ -115,7 +115,8 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
      * @dev Wallet tracks state for a wallet address.
      */
     struct Wallet {
-        bytes32 claimState;
+        uint256 lastClaimTime;
+        uint256 totalClaimed;
         uint256 balance;
     }
 
@@ -392,6 +393,7 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
         $.tokenContract.transferFrom($.tokenPool, to, amount);
         // update balance
         wallet.balance -= amount;
+        wallet.totalClaimed += amount;
         emit TokensClaimed(from, to, amount);
         return wallet.balance;
     }
