@@ -18,7 +18,7 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 /// @custom:security-contact contact@osmi.ai
 contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUPSUpgradeable, EIP712Upgradeable, NoncesUpgradeable {
     bytes32 private constant TICKET_TYPEHASH = 
-        keccak256("Ticket(address signer,address wallet,address pool,uint64 startTime,uint64 endTime,uint256 amount,uint256 nonce,uint256 deadline)");
+        keccak256("Ticket(address signer,address user,address pool,uint64 issued,uint64 start,uint64 end,uint64 count,uint256 amount,uint256 nonce,uint256 deadline)");
 
     /**
      * @dev Emitted when token contract is changed.
@@ -43,12 +43,12 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
     /**
      * @dev Emitted when claim ticket is redeemed by a user.
      */
-    event TicketRedeemed(address user, uint256 amount, bytes32 state);
+    event TicketRedeemed(address user, uint256 amount, uint64 issued, uint64 start, uint64 end, uint64 count);
 
     /**
      * @dev Emitted when tokens are claimed.
      */
-    event TokensClaimed(address from, address to, uint256 amount);
+    event TokensClaimed(address user, uint256 amount);
 
     /**
      * @dev Emitted when tokens are bridged.
@@ -66,11 +66,6 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
     error InvalidTokenPool(address pool, address expected);
 
     /**
-     * @dev Unexpected claimState for a user.
-     */
-    error UnexpectedClaimState(address user, bytes32 expected, bytes32 actual);
-
-    /**
      * @dev Signature deadline expired.
      */
     error ExpiredSignature(uint256 deadline);
@@ -81,9 +76,9 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
     error InvalidSigner(address signer, address owner);
 
     /**
-     * @dev Insufficient balance to complete a claim.
+     * @dev Insufficient allowance to transfer tokens.
      */
-    error InsufficientBalance(address spender, uint256 balance, uint256 needed);
+    error InsufficientAllowance(address user, uint256 allowance, uint256 needed);
 
     /**
      * @dev Bridge identifies bridges we can use.
@@ -100,10 +95,12 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
      */
     struct Ticket {
         address signer;
-        address wallet;
+        address user;
         address pool;
-        uint64 startTime;
-        uint64 endTime;
+        uint64 issued;
+        uint64 start;
+        uint64 end;
+        uint64 count;
         uint256 amount;
         uint256 deadline;
         uint8 v;
@@ -115,9 +112,8 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
      * @dev Wallet tracks state for a wallet address.
      */
     struct Wallet {
-        uint256 lastClaimTime;
-        uint256 totalClaimed;
-        uint256 balance;
+        uint256 allowance;
+        uint256 lastRedeemTime;
     }
 
     /// @custom:storage-location erc7201:ai.osmi.storage.OsmiDistributionManager
@@ -176,7 +172,7 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
     }
 
     function _getBridgeContract(Bridge bridge) internal view returns(address) {
-        require(bridge != Bridge.GalaChain, "unsupported bridge");
+        require(bridge == Bridge.GalaChain, "unsupported bridge");
         OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
         return $.bridges[bridge];
     }
@@ -286,53 +282,63 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
     }
 
     /**
-     * @dev Restricted external function to redeem a distribution ticket and then claim tokens from the balance. The
-     * new balance is returned.
+     * @dev Restricted external function to redeem a distribution ticket and then claim tokens from the allowance. The
+     * new allowance is returned.
      */
-    function redeemAndClaim(Ticket calldata ticket, uint256 amount) restricted external returns(uint256 balance) {
+    function redeemAndClaim(Ticket calldata ticket, uint256 amount) restricted external returns(uint256 allowance) {
         _redeemTicket(ticket);
-        address caller = _msgSender();
-        return _claimTokens(caller, caller, amount);
+        return _claimTokens(_msgSender(), amount);
     }
 
     /**
-     * @dev Restricted external function to redeem a distribution ticket and then bridge tokens from the balance. The
-     * new balance is returned.
+     * @dev Restricted external function to redeem a distribution ticket and then bridge tokens from the allowance. The
+     * new allowance is returned.
      */
-    function redeemAndBridge(Ticket calldata ticket, uint256 amount, Bridge bridge) restricted external returns(uint256 balance) {
+    function redeemAndBridge(Ticket calldata ticket, uint256 amount, Bridge bridge) restricted external returns(uint256 allowance) {
         _redeemTicket(ticket);
-        address caller = _msgSender();
-        return _bridgeTokens(caller, caller, amount, bridge);
+        return _bridgeTokens(_msgSender(), amount, bridge);
     }
 
     /**
      * @dev Restricted external function to bridge tokens from the token pool into the caller's wallet on the target
-     * bridge. The updated balance is returned. This function reverts on any issues.
+     * bridge. The updated allowance is returned.
      */
-    function bridgeTokens(uint256 amount, Bridge bridge) restricted external returns(uint256 balance) {
-        address caller = _msgSender();
-        return _bridgeTokens(caller, caller, amount, bridge);
+    function bridgeTokens(uint256 amount, Bridge bridge) restricted external returns(uint256 allowance) {
+        return _bridgeTokens(_msgSender(), amount, bridge);
     }
 
     /**
      * @dev Internal function to bridge tokens from the token pool into a wallet on the target bridge. The updated
-     * balance is returned. This function reverts on any issues.
+     * allowance is returned.
      */
-    function _bridgeTokens(address from, address to, uint256 amount, Bridge bridge) internal returns(uint256 balance) {
-        // first claim tokens to the destination
-        balance = _claimTokens(from, to, amount);
-        // next bridge to the target
+    function _bridgeTokens(address user, uint256 amount, Bridge bridge) internal returns(uint256 allowance) {
+        require(user != address(0), "user address can't be zero");
+        require(amount != 0, "amount can't be zero");
+        OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
+        // get the source wallet
+        Wallet storage wallet = $.wallets[user];
+        // check the allowance
+        if(wallet.allowance < amount) {
+            revert InsufficientAllowance(user, wallet.allowance, amount-wallet.allowance);
+        }
+        // transfer from node pool to this contract 
+        $.tokenContract.transferFrom($.tokenPool, address(this), amount);
+        // bridge from this contract to the recipient on the bridge
         address bridgeContract = _getBridgeContract(bridge);
         require(bridgeContract != address(0), "bridge unavailable");
+        // SNICHOLS: generalize this?
         IGalaBridge(bridgeContract).bridgeOut(
             address(_getTokenContract()),
             amount,
             0,
             1,
-            bytes(addressToGalaRecipient(to))
+            bytes(addressToGalaRecipient(user))
         );
-        emit TokensBridged(to, amount, bridge);
-        return balance;
+        // update allowanec
+        wallet.allowance -= amount;
+        // emit event
+        emit TokensBridged(user, amount, bridge);
+        return wallet.allowance;
     }
 
     /**
@@ -367,61 +373,68 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
 
     /**
      * @dev Restricted external function to transfer `amount` tokens from the token pool into the caller's wallet. The
-     * updated balance is returned. This function reverts on any issues.
+     * updated allowance is returned.
      */
-    function claimTokens(uint256 amount) restricted external returns(uint256 balance) {
-        address caller = _msgSender();
-        return _claimTokens(caller, caller, amount);
+    function claimTokens(uint256 amount) restricted external returns(uint256 allowance) {
+        return _claimTokens(_msgSender(), amount);
     }
 
     /**
-     * @dev Internal function to transfer `amount` tokens from the token pool between from and to. The from wallet must
-     * have sufficient balance in order to complete the transfer. This function reverts on any issues.
+     * @dev Attempt to transfer from the token pool into the user's wallet.
      */
-    function _claimTokens(address from, address to, uint256 amount) internal returns(uint256 balance) {
-        require(from != address(0), "from address can't be zero");
-        require(to != address(0), "to address can't be zero");
+    function _claimTokens(address user, uint256 amount) internal returns(uint256 allowance) {
+        require(user != address(0), "user address can't be zero");
         require(amount != 0, "amount can't be zero");
         OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
         // get the source wallet
-        Wallet storage wallet = $.wallets[from];
-        // check the balance
-        if(wallet.balance < amount) {
-            revert InsufficientBalance(from, wallet.balance, amount-wallet.balance);
+        Wallet storage wallet = $.wallets[user];
+        // check the allowance
+        if(wallet.allowance < amount) {
+            revert InsufficientAllowance(user, wallet.allowance, amount-wallet.allowance);
         }
-        // transfer from node pool to destination
-        $.tokenContract.transferFrom($.tokenPool, to, amount);
-        // update balance
-        wallet.balance -= amount;
-        wallet.totalClaimed += amount;
-        emit TokensClaimed(from, to, amount);
-        return wallet.balance;
+        // transfer from node pool
+        $.tokenContract.transferFrom($.tokenPool, user, amount);
+        // update allowance
+        wallet.allowance -= amount;
+        // emit event
+        emit TokensClaimed(user, amount);
+        return wallet.allowance;
     }
 
     /**
      * @dev Restricted external function to redeem a distribution ticket. If the ticket is valid, it is consumed and 
-     * the ticket's balance is credited to the ticket's wallet. This credit is applied to the internal balance
-     * of the wallet. Use claimTokens to transfer internal balance to an ethereum wallet. The updated wallet balance is 
-     * returned. This function will revert on any issues.
+     * the ticket's amount is credited to the user's allowance.
      */
-    function redeem(Ticket calldata ticket) restricted external returns(uint256 balance) {
+    function redeem(Ticket calldata ticket) restricted external returns(uint256 allowance) {
         return _redeemTicket(ticket);
     }
 
     /**
-     * @dev Internal function to redeem a distribution ticket. The ticket is verified then applied. This function will
-     * revert on any issues.
+     * @dev Internal function to redeem a distribution ticket. The ticket is verified then applied.
      */
-    function _redeemTicket(Ticket calldata ticket) internal returns(uint256 balance) {
-        _verifyTicket(ticket);
-        return _applyTicket(ticket);
+    function _redeemTicket(Ticket calldata ticket) internal returns(uint256 allowance) {
+        // verify signature
+        _verifyTicketSignature(ticket);
+        // get wallet
+        OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
+        Wallet storage wallet = $.wallets[ticket.user];
+        // verify ticket state
+        require(ticket.end > ticket.start, "ticket ends too soon");
+        require(ticket.issued >= ticket.end && block.timestamp > ticket.issued, "ticket issued in the future");
+        require((ticket.end-ticket.start)/1 days >= ticket.count, "ticket count too high");
+        require(ticket.issued > wallet.lastRedeemTime, "ticket issued before last redemption");
+        // update wallet state
+        wallet.allowance += ticket.amount;
+        wallet.lastRedeemTime = ticket.issued;
+        // emit event
+        emit TicketRedeemed(ticket.user, ticket.amount, ticket.issued, ticket.start, ticket.end, ticket.count);
+        return wallet.allowance;
     }
 
     /**
-     * @dev Internal function to verify a distribution ticket. The signature is verified along with the nonce. This 
-     * function will revert on any issues.
+     * @dev Internal function to verify a distribution ticket signature along with the nonce.
      */
-    function _verifyTicket(Ticket calldata ticket) internal {
+    function _verifyTicketSignature(Ticket calldata ticket) internal {
         if (block.timestamp > ticket.deadline) {
             revert ExpiredSignature(ticket.deadline);
         }
@@ -430,12 +443,14 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
         bytes32 structHash = keccak256(abi.encode(
             TICKET_TYPEHASH, 
             ticket.signer, 
-            ticket.wallet, 
+            ticket.user, 
             ticket.pool,
-            ticket.expectedClaimState,
-            ticket.newClaimState,
+            ticket.issued,
+            ticket.start,
+            ticket.end,
+            ticket.count,
             ticket.amount, 
-            _useNonce(ticket.wallet), 
+            _useNonce(ticket.user), 
             ticket.deadline
         ));
         bytes32 hash = _hashTypedDataV4(structHash);
@@ -446,24 +461,7 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
     }
 
     /**
-     * @dev Internal function to apply a distribution ticket. The ticket is assumed to be valid. This function reverts
-     * on any issues.
-     */
-    function _applyTicket(Ticket calldata ticket) internal returns (uint256 balance) {
-        OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
-        Wallet storage wallet = $.wallets[ticket.wallet];
-        if(ticket.expectedClaimState != wallet.claimState) {
-            revert UnexpectedClaimState(ticket.wallet, ticket.expectedClaimState, wallet.claimState);
-        }
-        wallet.claimState = ticket.newClaimState;
-        wallet.balance += ticket.amount;
-        emit TicketRedeemed(ticket.wallet, ticket.amount, wallet.claimState);
-        return wallet.balance;
-    }
-
-    /**
-     * @dev Internal function to check if the given address is on the ticket signer list. This function reverts
-     * on any issues.
+     * @dev Internal function to check if the given address is on the ticket signer list.
      */
     function _validateTicketSigner(address v) internal view {
         OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
