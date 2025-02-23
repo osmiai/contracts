@@ -18,7 +18,15 @@ import "@openzeppelin/contracts/utils/Strings.sol";
 /// @custom:security-contact contact@osmi.ai
 contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUPSUpgradeable, EIP712Upgradeable, NoncesUpgradeable {
     bytes32 private constant TICKET_TYPEHASH = 
-        keccak256("Ticket(address signer,address user,address pool,uint64 issued,uint64 start,uint64 end,uint64 count,uint256 amount,uint256 nonce,uint256 deadline)");
+        keccak256("Ticket(address signer,address user,uint256 timestamp,bytes32 expectedHash,uint256 amount,uint256 nonce)");
+
+    bytes32 private constant TICKET_CHAIN_TYPEHASH = 
+        keccak256("TicketChain(bytes32 prev,address user,uint256 timestamp,uint256 amount,uint256 nonce)");
+
+    /**
+     * @dev What's the minimum delta time between two distributions?
+     */
+    uint constant DistributionWindow = 1 days - 1 hours;
 
     /**
      * @dev Emitted when token contract is changed.
@@ -43,32 +51,17 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
     /**
      * @dev Emitted when claim ticket is redeemed by a user.
      */
-    event TicketRedeemed(address user, uint256 amount, uint64 issued, uint64 start, uint64 end, uint64 count);
+    event TicketRedeemed(address user, uint256 amount, uint256 timestamp);
 
     /**
      * @dev Emitted when tokens are claimed.
      */
-    event TokensClaimed(address user, uint256 amount);
-
-    /**
-     * @dev Emitted when tokens are bridged.
-     */
-    event TokensBridged(address user, uint256 amount, Bridge bridge);
+    event TokensClaimed(address user, uint256 amount, Bridge bridge);
 
     /**
      * @dev Invalid ticket signer.
      */
     error InvalidTicketSigner(address signer, address one, address two);
-
-    /**
-     * @dev Invalid token pool.
-     */
-    error InvalidTokenPool(address pool, address expected);
-
-    /**
-     * @dev Signature deadline expired.
-     */
-    error ExpiredSignature(uint256 deadline);
 
     /**
      * @dev Mismatched signature.
@@ -79,6 +72,11 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
      * @dev Insufficient allowance to transfer tokens.
      */
     error InsufficientAllowance(address user, uint256 allowance, uint256 needed);
+
+    /**
+     * @dev Invalid ticket hash.
+     */
+    error InvalidTicketHash(bytes32 expected, bytes32 actual);
 
     /**
      * @dev Bridge identifies bridges we can use.
@@ -96,13 +94,9 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
     struct Ticket {
         address signer;
         address user;
-        address pool;
-        uint64 issued;
-        uint64 start;
-        uint64 end;
-        uint64 count;
+        uint256 timestamp;
+        bytes32 expectedHash;
         uint256 amount;
-        uint256 deadline;
         uint8 v;
         bytes32 r;
         bytes32 s;
@@ -113,7 +107,8 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
      */
     struct Wallet {
         uint256 allowance;
-        uint256 lastRedeemTime;
+        uint256 lastTicketTimestamp;
+        bytes32 lastTicketHash;
     }
 
     /// @custom:storage-location erc7201:ai.osmi.storage.OsmiDistributionManager
@@ -300,16 +295,16 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
     }
 
     /**
-     * @dev Restricted external function to bridge tokens from the token pool into the caller's wallet on the target
-     * bridge. The updated allowance is returned.
+     * @dev Restricted external function to claim and bridge tokens from the token pool into the caller's wallet on the
+     * target bridge. The updated allowance is returned.
      */
     function bridgeTokens(uint256 amount, Bridge bridge) restricted external returns(uint256 allowance) {
         return _bridgeTokens(_msgSender(), amount, bridge);
     }
 
     /**
-     * @dev Internal function to bridge tokens from the token pool into a wallet on the target bridge. The updated
-     * allowance is returned.
+     * @dev Internal function to claim and bridge tokens from the token pool into a wallet on the target bridge. The 
+     * updated allowance is returned.
      */
     function _bridgeTokens(address user, uint256 amount, Bridge bridge) internal returns(uint256 allowance) {
         require(user != address(0), "user address can't be zero");
@@ -337,7 +332,7 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
         // update allowanec
         wallet.allowance -= amount;
         // emit event
-        emit TokensBridged(user, amount, bridge);
+        emit TokensClaimed(user, amount, bridge);
         return wallet.allowance;
     }
 
@@ -397,7 +392,7 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
         // update allowance
         wallet.allowance -= amount;
         // emit event
-        emit TokensClaimed(user, amount);
+        emit TokensClaimed(user, amount, Bridge.None);
         return wallet.allowance;
     }
 
@@ -414,50 +409,59 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
      */
     function _redeemTicket(Ticket calldata ticket) internal returns(uint256 allowance) {
         // verify signature
-        _verifyTicketSignature(ticket);
+        uint256 nonce = _verifyTicketSignature(ticket);
         // get wallet
         OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
         Wallet storage wallet = $.wallets[ticket.user];
         // verify ticket state
-        require(ticket.end > ticket.start, "ticket ends too soon");
-        require(ticket.issued >= ticket.end && block.timestamp > ticket.issued, "ticket issued in the future");
-        require((ticket.end-ticket.start)/1 days >= ticket.count, "ticket count too high");
-        require(ticket.issued > wallet.lastRedeemTime, "ticket issued before last redemption");
+        require(ticket.amount > 0, "amount cannot be zero");
+        require(ticket.user != address(0), "user address cannot be zero");
+        // verify ticket timing
+        uint256 tt = ticket.timestamp;
+        uint256 ltt = wallet.lastTicketTimestamp;
+        require((block.timestamp-tt) <= DistributionWindow, "ticket expired");
+        require((tt-ltt) >= DistributionWindow, "ticket issued too soon");
+        // check ticket chain
+        if(ticket.expectedHash != wallet.lastTicketHash) {
+            revert InvalidTicketHash(ticket.expectedHash, wallet.lastTicketHash);
+        }
         // update wallet state
         wallet.allowance += ticket.amount;
-        wallet.lastRedeemTime = ticket.issued;
+        wallet.lastTicketTimestamp = ticket.timestamp;
+        wallet.lastTicketHash = keccak256(abi.encode(
+            TICKET_CHAIN_TYPEHASH,
+            wallet.lastTicketHash,
+            ticket.user,
+            ticket.timestamp,
+            ticket.amount,
+            nonce
+        ));
         // emit event
-        emit TicketRedeemed(ticket.user, ticket.amount, ticket.issued, ticket.start, ticket.end, ticket.count);
+        emit TicketRedeemed(ticket.user, ticket.amount, tt);
         return wallet.allowance;
     }
 
     /**
      * @dev Internal function to verify a distribution ticket signature along with the nonce.
      */
-    function _verifyTicketSignature(Ticket calldata ticket) internal {
-        if (block.timestamp > ticket.deadline) {
-            revert ExpiredSignature(ticket.deadline);
-        }
-        _validateTokenPool(ticket.pool);
+    function _verifyTicketSignature(Ticket calldata ticket) internal returns (uint256 nonce) {
         _validateTicketSigner(ticket.signer);
+        nonce = _useNonce(ticket.user);
         bytes32 structHash = keccak256(abi.encode(
             TICKET_TYPEHASH, 
             ticket.signer, 
             ticket.user, 
-            ticket.pool,
-            ticket.issued,
-            ticket.start,
-            ticket.end,
-            ticket.count,
+            ticket.timestamp,
+            ticket.expectedHash,
             ticket.amount, 
-            _useNonce(ticket.user), 
-            ticket.deadline
+            nonce
         ));
         bytes32 hash = _hashTypedDataV4(structHash);
         address recoveredSigner = ECDSA.recover(hash, ticket.v, ticket.r, ticket.s);
         if (recoveredSigner != ticket.signer) {
             revert InvalidSigner(recoveredSigner, ticket.signer);
         }
+        return nonce;
     }
 
     /**
@@ -469,11 +473,4 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
             revert InvalidTicketSigner(v, $.ticketSigners[0], $.ticketSigners[1]);
         }
     }
-
-    function _validateTokenPool(address v) internal view {
-        OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
-        if (v != $.tokenPool) {
-            revert InvalidTokenPool(v, $.tokenPool);
-        }
-    }    
 }
