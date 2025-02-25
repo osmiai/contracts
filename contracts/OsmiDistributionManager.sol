@@ -24,9 +24,19 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
         keccak256("TicketChain(bytes32 prev,address user,uint256 timestamp,uint256 amount,uint256 nonce)");
 
     /**
+     * @dev Denominator of ratio calculations in this contract.
+     */
+    uint constant RATIO_DENOMINATOR = 1_000_000_000;
+
+    /**
+     * @dev Numerator of claim tax ratio.
+     */
+    uint constant TAX_NUMERATOR = 25_000_000;
+
+    /**
      * @dev What's the minimum delta time between two distributions?
      */
-    uint constant DistributionWindow = 1 days - 1 hours;
+    uint constant DISTRIBUTION_WINDOW = 1 days - 1 hours;
 
     /**
      * @dev Emitted when token contract is changed.
@@ -316,7 +326,15 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
         if(wallet.allowance < amount) {
             revert InsufficientAllowance(user, wallet.allowance, amount-wallet.allowance);
         }
-        // transfer from node pool to this contract 
+        // update allowance
+        wallet.allowance -= amount;
+        // emit event
+        emit TokensClaimed(user, amount, bridge);
+        // calculate and deduct tax
+        uint256 tax = Math.mulDiv(amount, TAX_NUMERATOR, RATIO_DENOMINATOR);
+        amount -= tax;
+        // burn tax and transfer amount to this contract
+        $.tokenContract.burnFrom($.tokenPool, tax);
         $.tokenContract.transferFrom($.tokenPool, address(this), amount);
         // bridge from this contract to the recipient on the bridge
         address bridgeContract = _getBridgeContract(bridge);
@@ -329,10 +347,6 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
             1,
             bytes(addressToGalaRecipient(user))
         );
-        // update allowanec
-        wallet.allowance -= amount;
-        // emit event
-        emit TokensClaimed(user, amount, bridge);
         return wallet.allowance;
     }
 
@@ -387,12 +401,16 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
         if(wallet.allowance < amount) {
             revert InsufficientAllowance(user, wallet.allowance, amount-wallet.allowance);
         }
-        // transfer from node pool
-        $.tokenContract.transferFrom($.tokenPool, user, amount);
         // update allowance
         wallet.allowance -= amount;
         // emit event
         emit TokensClaimed(user, amount, Bridge.None);
+        // calculate and deduct tax
+        uint256 tax = Math.mulDiv(amount, TAX_NUMERATOR, RATIO_DENOMINATOR);
+        amount -= tax;
+        // burn tax and transfer from node pool
+        $.tokenContract.burnFrom($.tokenPool, tax);
+        $.tokenContract.transferFrom($.tokenPool, user, amount);
         return wallet.allowance;
     }
 
@@ -419,8 +437,8 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
         // verify ticket timing
         uint256 tt = ticket.timestamp;
         uint256 ltt = wallet.lastTicketTimestamp;
-        require((block.timestamp-tt) <= DistributionWindow, "ticket expired");
-        require((tt-ltt) >= DistributionWindow, "ticket issued too soon");
+        require((block.timestamp-tt) <= DISTRIBUTION_WINDOW, "ticket expired");
+        require((tt-ltt) >= DISTRIBUTION_WINDOW, "ticket issued too soon");
         // check ticket chain
         if(ticket.expectedHash != wallet.lastTicketHash) {
             revert InvalidTicketHash(ticket.expectedHash, wallet.lastTicketHash);
