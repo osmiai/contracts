@@ -27,6 +27,14 @@ task(
 })
 
 task(
+  "osmi-set-distribution-signer",
+  "Set distribution ticket signer.",
+).setAction(async (args, hre) => {
+  const { OsmiDistributionManager } = await loadDeployedAddresses(hre)
+  await OsmiDistributionManager.setTicketSigner("0x97932ed7cec8cEdf53e498F0efF5E55a54A0BB98")
+})
+
+task(
   "osmi-configure-distribution-bridge",
   "Configure distribution manager bridge addresses",
 ).setAction(async (args, hre) => {

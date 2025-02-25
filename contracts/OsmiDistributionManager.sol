@@ -21,7 +21,7 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
         keccak256("Ticket(address signer,address user,uint256 timestamp,bytes32 expectedHash,uint256 amount,uint256 nonce)");
 
     bytes32 private constant TICKET_CHAIN_TYPEHASH = 
-        keccak256("TicketChain(bytes32 prev,address user,uint256 timestamp,uint256 amount,uint256 nonce)");
+        keccak256("TicketChain(address contract,uint256 chain,bytes32 prev,address user,uint256 timestamp,uint256 amount,uint256 nonce)");
 
     /**
      * @dev What's the minimum delta time between two distributions?
@@ -430,6 +430,8 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
         wallet.lastTicketTimestamp = ticket.timestamp;
         wallet.lastTicketHash = keccak256(abi.encode(
             TICKET_CHAIN_TYPEHASH,
+            address(this),
+            block.chainid,
             wallet.lastTicketHash,
             ticket.user,
             ticket.timestamp,

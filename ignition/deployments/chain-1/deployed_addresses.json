@@ -14,5 +14,5 @@
   "OsmiDailyDistributionUpgradeModule#OsmiDailyDistribution": "0xaE4e1aD599249dAa41b5FF9D4A8D3484ABa5304e",
   "OsmiDistributionManagerProxyModule#OsmiDistributionManager": "0xbC66EdCd35a91A682125753243984E9a54e700BB",
   "OsmiDistributionManagerProxyModule#ERC1967Proxy": "0xc8a9F015B3FF942Cf8B99E72FB8c4E02FC6308E9",
-  "OsmiDistributionManagerUpgradeModule#OsmiDistributionManager": "0xDB49A0Ec56Ee340315634e2694855FE6F10310b9"
+  "OsmiDistributionManagerUpgradeModule#OsmiDistributionManager": "0x34cC7187715BFf9814DA6F0bC1b76d8343A61eDd"
 }
