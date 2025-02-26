@@ -339,6 +339,8 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
         // bridge from this contract to the recipient on the bridge
         address bridgeContract = _getBridgeContract(bridge);
         require(bridgeContract != address(0), "bridge unavailable");
+        // approve transfer from this contract to the bridge
+        $.tokenContract.approve(bridgeContract, amount);
         // SNICHOLS: generalize this?
         IGalaBridge(bridgeContract).bridgeOut(
             address(_getTokenContract()),
