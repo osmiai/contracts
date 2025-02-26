@@ -356,30 +356,41 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
      * @dev Internal function to create a GalaChain recipent string from an address.
      */
     function addressToGalaRecipient(address addr) internal pure returns(string memory) {
-        unchecked {
-            bytes4 prefix = "eth|";
-            bytes16 hex_digits = "0123456789abcdef";
-            string memory buffer = new string(44);
-            uint256 lptr;
-            uint256 rptr;
-            /// @solidity memory-safe-assembly
-            assembly {
-                lptr := add(buffer, 32)
-                mstore(lptr, prefix)
-                lptr := add(lptr, 4)
-                rptr := add(lptr, 40)
+        bytes4 prefix = "eth|";
+        bytes16 hex_digits = "0123456789abcdef";
+        bytes16 hex_digits_upper = "0123456789ABCDEF";
+        // allocate buffer for the whole string
+        string memory buffer = new string(44);
+        /// @solidity memory-safe-assembly
+        assembly {
+            let lptr := add(buffer, 32)
+            // store and skip prefix
+            mstore(lptr, prefix)
+            lptr := add(lptr, 4)
+            // rptr at end of buffer
+            let rptr := add(lptr, 40)
+            // loop over each address nibble and convert to hex digit
+            let addrValue := addr
+            for {} gt(rptr, lptr) {} {
+                rptr := sub(rptr, 1)
+                mstore8(rptr, byte(and(addrValue, 0xf), hex_digits))
+                addrValue := shr(4, addrValue)
             }
-            uint256 value = uint256(uint160(addr));
-            while(rptr > lptr) {
-                rptr--;
-                /// @solidity memory-safe-assembly
-                assembly {
-                    mstore8(rptr, byte(and(value, 0xf), hex_digits))
+            // compute hash of the buffer without prefix
+            let hashValue := shr(96, keccak256(lptr, 40))
+            // loop over each hash hibble and convert address bytes to uppercase
+            addrValue := addr
+            rptr := add(lptr, 40)
+            for {} gt(rptr, lptr) {} {
+                rptr := sub(rptr, 1)
+                if gt(and(hashValue, 0xf), 7) {
+                    mstore8(rptr, byte(and(addrValue, 0xf), hex_digits_upper))
                 }
-                value >>= 4;
+                addrValue := shr(4, addrValue)
+                hashValue := shr(4, hashValue)
             }
-            return buffer;
         }
+        return buffer;
     }
 
     /**
