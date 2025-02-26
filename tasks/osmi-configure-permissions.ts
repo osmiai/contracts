@@ -112,12 +112,12 @@ const distributionManagerFunctionRoles = (() => {
         functionRoles.set(signature, role)
     }
     // public functions
-    setFunctionRole("redeem((address,address,address,uint64,uint64,uint64,uint64,uint256,uint256,uint8,bytes32,bytes32))", PUBLIC_ROLE)
+    setFunctionRole("redeem((address,address,uint256,bytes32,uint256,uint8,bytes32,bytes32))", PUBLIC_ROLE)
     setFunctionRole("bridgeTokens(uint256,uint8)", PUBLIC_ROLE)
-    setFunctionRole("redeemAndBridge((address,address,address,uint64,uint64,uint64,uint64,uint256,uint256,uint8,bytes32,bytes32),uint256,uint8)", PUBLIC_ROLE)
+    setFunctionRole("redeemAndBridge((address,address,uint256,bytes32,uint256,uint8,bytes32,bytes32),uint256,uint8)", PUBLIC_ROLE)
     // manager functions
     setFunctionRole("claimTokens(uint256)", MANAGER_ROLE)
-    setFunctionRole("redeemAndClaim((address,address,address,uint64,uint64,uint64,uint64,uint256,uint256,uint8,bytes32,bytes32),uint256)", MANAGER_ROLE)
+    setFunctionRole("redeemAndClaim((address,address,uint256,bytes32,uint256,uint8,bytes32,bytes32),uint256)", MANAGER_ROLE)
     // result
     return functionRoles
 })()
