@@ -1,6 +1,6 @@
-import { task, vars } from "hardhat/config"
+import { task } from "hardhat/config"
 import { loadDeployedAddresses } from "./utils"
-import { AddressLike, BigNumberish } from "ethers"
+import { AddressLike } from "ethers"
 
 task("osmi-close", "Close OsmiToken.")
     .setAction(async (args, hre) => {
@@ -128,7 +128,6 @@ task("osmi-sign-message", "Manually sign a message.")
         console.log(response)
     })
 
-
 task("osmi-upgrade-node", "Upgrade OsmiNode implementation.")
     .setAction(async (args, hre) => {
         // TODO: SNICHOLS: clean this up
@@ -148,4 +147,11 @@ task("osmi-upgrade-daily-distribution", "Upgrade OsmiDailyDistribution implement
         // TODO: SNICHOLS: clean this up
         const { OsmiDailyDistribution } = await loadDeployedAddresses(hre)
         // await OsmiDailyDistribution.upgradeToAndCall("<address>", "0x")
+    })
+
+task("osmi-upgrade-distribution-manager", "Upgrade OsmiDistributionManager implementation.")
+    .setAction(async (args, hre) => {
+        // TODO: SNICHOLS: clean this up
+        const { OsmiDistributionManager } = await loadDeployedAddresses(hre)
+        await OsmiDistributionManager.upgradeToAndCall("<address>", "0x")
     })

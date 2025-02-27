@@ -11,5 +11,8 @@
   "OsmiNodeFactoryProxyModule#ERC1967Proxy": "0x5a46aD7e29076C8Da2A5c22C5CB7B450211820A6",
   "OsmiNodeUpgradeModule#OsmiNode": "0x14EA14A50fE434B5f7d9d337a5f096d7054e3d8e",
   "OsmiNodeFactoryUpgradeModule#OsmiNodeFactory": "0x9f383365856320c8DE4d1c8ED4f7bade53C5c979",
-  "OsmiDailyDistributionUpgradeModule#OsmiDailyDistribution": "0xaE4e1aD599249dAa41b5FF9D4A8D3484ABa5304e"
+  "OsmiDailyDistributionUpgradeModule#OsmiDailyDistribution": "0xaE4e1aD599249dAa41b5FF9D4A8D3484ABa5304e",
+  "OsmiDistributionManagerProxyModule#OsmiDistributionManager": "0xbC66EdCd35a91A682125753243984E9a54e700BB",
+  "OsmiDistributionManagerProxyModule#ERC1967Proxy": "0xc8a9F015B3FF942Cf8B99E72FB8c4E02FC6308E9",
+  "OsmiDistributionManagerUpgradeModule#OsmiDistributionManager": "0x94eF629175a1510d384F197A8239aB67239EeA28"
 }

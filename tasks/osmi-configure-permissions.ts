@@ -35,8 +35,6 @@ masterRoleSettings.set(MINTER_ROLE, {
     guardian: MANAGER_ROLE,
 })
 
-// 0x7766fb1c
-
 // token function roles
 const tokenFunctionRoles = (() => {
     const functionRoles = new Map<string, BigNumberish>()
@@ -104,6 +102,26 @@ const nodeFactoryFunctionRoles = (() => {
     return functionRoles
 })()
 
+// distribution manager function roles
+const distributionManagerFunctionRoles = (() => {
+    const functionRoles = new Map<string, BigNumberish>()
+    function setFunctionRole(signature: string, role: BigNumberish) {
+        if (functionRoles.has(signature)) {
+            throw new Error("function signature already registered")
+        }
+        functionRoles.set(signature, role)
+    }
+    // public functions
+    setFunctionRole("redeem((address,address,uint256,bytes32,uint256,uint8,bytes32,bytes32))", PUBLIC_ROLE)
+    setFunctionRole("bridgeTokens(uint256,uint8)", PUBLIC_ROLE)
+    setFunctionRole("redeemAndBridge((address,address,uint256,bytes32,uint256,uint8,bytes32,bytes32),uint256,uint8)", PUBLIC_ROLE)
+    // manager functions
+    setFunctionRole("claimTokens(uint256)", MANAGER_ROLE)
+    setFunctionRole("redeemAndClaim((address,address,uint256,bytes32,uint256,uint8,bytes32,bytes32),uint256)", MANAGER_ROLE)
+    // result
+    return functionRoles
+})()
+
 function selector(v: string): BytesLike {
     // const x = id(v)
     // console.log(`selector("${v}") = ${x}`)
@@ -146,6 +164,7 @@ task("osmi-configure-permissions", "Automated permission configuration.")
         await hre.run("node-nft")
         await hre.run("daily-distribution")
         await hre.run("node-factory")
+        await hre.run("distribution-manager")
     })
 
 subtask("roles")
@@ -244,4 +263,11 @@ subtask("node-factory")
         if (!isMember) {
             await OsmiAccessManager.grantRole(MINTER_ROLE, OsmiNodeFactory, 0)
         }
+    })
+
+subtask("distribution-manager")
+    .setAction(async (taskArgs, hre) => {
+        console.log("osmi-configure-permissions:distribution-manager")
+        const { OsmiAccessManager, OsmiDistributionManager } = await loadDeployedAddresses(hre)
+        await applyFunctionRoles(distributionManagerFunctionRoles, OsmiAccessManager, OsmiDistributionManager)
     })

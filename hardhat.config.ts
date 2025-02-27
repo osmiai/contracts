@@ -12,7 +12,7 @@ const ALCHEMY_URL_SEPOLIA = vars.get("ALCHEMY_URL_SEPOLIA")
 const ALCHEMY_URL_MAINNET = vars.get("ALCHEMY_URL_MAINNET")
 const OSMI_ADMIN_ADDRESS = vars.get("OSMI_ADMIN_ADDRESS")
 const OSMI_PROJECT_ADDRESS = vars.get("OSMI_PROJECT_ADDRESS")
-const OSMI_OVERSEER_PRIVATE_KEY = vars.get("OSMI_OVERSEER_PRIVATE_KEY")
+const OSMI_NODE_REWARDS_ADDRESS = vars.get("OSMI_NODE_REWARDS_ADDRESS")
 
 export default {
   solidity: {
@@ -22,6 +22,7 @@ export default {
         enabled: true,
         runs: 200,
       },
+      // evmVersion: 'cancun',
     },
   },
   networks: {
@@ -31,6 +32,7 @@ export default {
       ledgerAccounts: [
         OSMI_ADMIN_ADDRESS,
         OSMI_PROJECT_ADDRESS,
+        OSMI_NODE_REWARDS_ADDRESS,
       ],
     },
     sepolia: {
@@ -38,6 +40,7 @@ export default {
       ledgerAccounts: [
         OSMI_ADMIN_ADDRESS,
         OSMI_PROJECT_ADDRESS,
+        OSMI_NODE_REWARDS_ADDRESS,
       ],
       // accounts: [OSMI_OVERSEER_PRIVATE_KEY],
     }

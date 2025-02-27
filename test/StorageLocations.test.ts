@@ -1,4 +1,5 @@
 import { expect } from "chai";
+import { vars, task } from "hardhat/config"
 import hre from "hardhat";
 
 describe("StorageLocations", () => {
@@ -8,6 +9,7 @@ describe("StorageLocations", () => {
         console.log("OsmiTokenStorageLocation:", await locations.getOsmiTokenStorageLocation())
         console.log("OsmiNodeStorageLocation:", await locations.getOsmiNodeStorageLocation())
         console.log("OsmiDailyDistributionStorageLocation:", await locations.getOsmiDailyDistributionStorageLocation())
-        console.log("OsmiDailyDistributionStorageLocation:", await locations.getOsmiNodeFactoryStorageLocation())
+        console.log("OsmiNodeFactoryStorageLocation:", await locations.getOsmiNodeFactoryStorageLocation())
+        console.log("OsmiDistributionManagerStorageLocation:", await locations.getOsmiDistributionManagerStorageLocation())
     });
 })

@@ -11,5 +11,6 @@ export async function loadDeployedAddresses(hre: HardhatRuntimeEnvironment) {
         OsmiNode: await hre.ethers.getContractAt("OsmiNode", addresses["OsmiNodeProxyModule#ERC1967Proxy"]),
         OsmiDailyDistribution: await hre.ethers.getContractAt("OsmiDailyDistribution", addresses["OsmiDailyDistributionProxyModule#ERC1967Proxy"]),
         OsmiNodeFactory: await hre.ethers.getContractAt("OsmiNodeFactory", addresses["OsmiNodeFactoryProxyModule#ERC1967Proxy"]),
+        OsmiDistributionManager: await hre.ethers.getContractAt("OsmiDistributionManager", addresses["OsmiDistributionManagerProxyModule#ERC1967Proxy"]),
     }
 }
