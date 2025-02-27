@@ -11,6 +11,5 @@ describe("StorageLocations", () => {
         console.log("OsmiDailyDistributionStorageLocation:", await locations.getOsmiDailyDistributionStorageLocation())
         console.log("OsmiNodeFactoryStorageLocation:", await locations.getOsmiNodeFactoryStorageLocation())
         console.log("OsmiDistributionManagerStorageLocation:", await locations.getOsmiDistributionManagerStorageLocation())
-        console.log("addressToGalaRecipient:", await locations.addressToGalaRecipient("0xa4CeB9D3250ca77F241999496121634650A505Bc"))
     });
 })
