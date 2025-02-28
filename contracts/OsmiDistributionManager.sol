@@ -69,6 +69,11 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
     event TokensClaimed(address user, uint256 amount, Bridge bridge);
 
     /**
+     * @dev Emitted when tokens are bridged to a custom target.
+     */
+    event TokensBridgedTo(address user, uint256 amount, Bridge bridge, string target);
+
+    /**
      * @dev Invalid ticket signer.
      */
     error InvalidTicketSigner(address signer, address one, address two);
@@ -301,7 +306,20 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
      */
     function redeemAndBridge(Ticket calldata ticket, uint256 amount, Bridge bridge) restricted external returns(uint256 allowance) {
         _redeemTicket(ticket);
-        return _bridgeTokens(_msgSender(), amount, bridge);
+        return _bridgeTokens(_msgSender(), amount, bridge, "");
+    }
+
+    /**
+     * @dev Restricted external function to redeem a distribution ticket and then bridge tokens from the allowance to
+     * an address alias on GalaChain. The new allowance is returned.
+     * 
+     * HACK, REMOVE LATER
+     */
+    function redeemAndBridgeToGalaChainAlias(
+        Ticket calldata ticket, uint256 amount, string calldata targetAlias
+    ) restricted external returns(uint256 allowance) {
+        _redeemTicket(ticket);
+        return _bridgeTokens(_msgSender(), amount, Bridge.GalaChain, targetAlias);
     }
 
     /**
@@ -309,14 +327,28 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
      * target bridge. The updated allowance is returned.
      */
     function bridgeTokens(uint256 amount, Bridge bridge) restricted external returns(uint256 allowance) {
-        return _bridgeTokens(_msgSender(), amount, bridge);
+        return _bridgeTokens(_msgSender(), amount, bridge, "");
+    }
+
+    /**
+     * @dev Restricted external function to claim and bridge tokens from the caller's token pool allowange into a 
+     * target wallet on GalaChain. The updated allowance is returned.
+     * 
+     * HACK, REMOVE LATER
+     */
+    function bridgeTokensToGalaChainAlias(
+        uint256 amount, string calldata targetAlias
+    ) restricted external returns(uint256 allowance) {
+        return _bridgeTokens(_msgSender(), amount, Bridge.GalaChain, targetAlias);
     }
 
     /**
      * @dev Internal function to claim and bridge tokens from the token pool into a wallet on the target bridge. The 
      * updated allowance is returned.
      */
-    function _bridgeTokens(address user, uint256 amount, Bridge bridge) internal returns(uint256 allowance) {
+    function _bridgeTokens(
+        address user, uint256 amount, Bridge bridge, string memory target
+    ) internal returns(uint256 allowance) {
         require(user != address(0), "user address can't be zero");
         require(amount != 0, "amount can't be zero");
         OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
@@ -342,13 +374,25 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
         // approve transfer from this contract to the bridge
         $.tokenContract.approve(bridgeContract, amount);
         // SNICHOLS: generalize this?
-        IGalaBridge(bridgeContract).bridgeOut(
-            address(_getTokenContract()),
-            amount,
-            0,
-            1,
-            bytes(addressToGalaRecipient(user))
-        );
+        if(bytes(target).length == 0) {
+            IGalaBridge(bridgeContract).bridgeOut(
+                address(_getTokenContract()),
+                amount,
+                0,
+                1,
+                bytes(addressToGalaRecipient(user))
+            );
+        } else {
+            IGalaBridge(bridgeContract).bridgeOut(
+                address(_getTokenContract()),
+                amount,
+                0,
+                1,
+                bytes(target)
+            );
+            // emit bridged to event
+            emit TokensBridgedTo(user, amount, bridge, target);
+        }
         return wallet.allowance;
     }
 
