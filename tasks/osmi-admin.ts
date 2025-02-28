@@ -153,5 +153,5 @@ task("osmi-upgrade-distribution-manager", "Upgrade OsmiDistributionManager imple
     .setAction(async (args, hre) => {
         // TODO: SNICHOLS: clean this up
         const { OsmiDistributionManager } = await loadDeployedAddresses(hre)
-        await OsmiDistributionManager.upgradeToAndCall("<address>", "0x")
+        await OsmiDistributionManager.upgradeToAndCall("0x21C4fC244D02EC5EC0df4eF7861362171076E7Cc", "0x")
     })
