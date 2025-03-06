@@ -375,24 +375,18 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
         $.tokenContract.approve(bridgeContract, amount);
         // SNICHOLS: generalize this?
         if(bytes(target).length == 0) {
-            IGalaBridge(bridgeContract).bridgeOut(
-                address(_getTokenContract()),
-                amount,
-                0,
-                1,
-                bytes(addressToGalaRecipient(user))
-            );
+            target = addressToGalaRecipient(user);
         } else {
-            IGalaBridge(bridgeContract).bridgeOut(
-                address(_getTokenContract()),
-                amount,
-                0,
-                1,
-                bytes(target)
-            );
             // emit bridged to event
             emit TokensBridgedTo(user, amount, bridge, target);
         }
+        IGalaBridge(bridgeContract).bridgeOut(
+            address(_getTokenContract()),
+            amount,
+            0,
+            1,
+            bytes(target)
+        );
         return wallet.allowance;
     }
 
