@@ -11,5 +11,6 @@ describe("StorageLocations", () => {
         console.log("OsmiDailyDistributionStorageLocation:", await locations.getOsmiDailyDistributionStorageLocation())
         console.log("OsmiNodeFactoryStorageLocation:", await locations.getOsmiNodeFactoryStorageLocation())
         console.log("OsmiDistributionManagerStorageLocation:", await locations.getOsmiDistributionManagerStorageLocation())
+        console.log("OsmiStakingStorageLocation:", await locations.getOsmiStakingStorageLocation())
     });
 })
