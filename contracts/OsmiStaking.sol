@@ -3,20 +3,19 @@
 pragma solidity ^0.8.22;
 
 import {IOsmiToken} from "./IOsmiToken.sol";
-import {IGalaBridge} from "./IGalaBridge.sol";
-import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import {EIP712Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
-import {NoncesUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/NoncesUpgradeable.sol";
+// import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+// import {EIP712Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
+// import {NoncesUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/NoncesUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import "@openzeppelin/contracts/utils/Strings.sol";
+// import "@openzeppelin/contracts/utils/Strings.sol";
 
 /**
  * @dev OsmiStaking manages staking of OSMI token.
  */
 /// @custom:security-contact contact@osmi.ai
-contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable, EIP712Upgradeable, NoncesUpgradeable {
+contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable { //, EIP712Upgradeable, NoncesUpgradeable {
     /**
      * @dev How long to hold withdrawals before finalizing.
      */
@@ -51,6 +50,7 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
     error ErrPopulatedListRequired();
 
     // events
+    event CoinsStaked(address user, uint64 timestamp, uint256 amount);
     event AutoStakeChanged(address user, bool value);
     event StreakStartTimeChanged(address user, uint64 value);
     event WithdrawalStarted(address user, uint64 id, uint64 timestamp, uint64 availableAt, uint256 amount);
@@ -112,6 +112,8 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
 
     /// @custom:storage-location erc7201:ai.osmi.storage.OsmiStakingStorage
     struct OsmiStakingStorage {
+        IOsmiToken tokenContract;
+        // IOsmiDistributionManager distroManagerContract;
         mapping(address => Stake) stakes;
     }
 
@@ -133,9 +135,9 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
         address initialAuthority
     ) initializer public {
         __AccessManaged_init(initialAuthority);
-        __Nonces_init();
+        // __Nonces_init();
         __UUPSUpgradeable_init();
-        __EIP712_init("OsmiStaking", "1");
+        // __EIP712_init("OsmiStaking", "1");
         __UUPSUpgradeable_init();
     }
 
