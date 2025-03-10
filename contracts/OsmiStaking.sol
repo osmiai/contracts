@@ -42,6 +42,14 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
      */
     uint256 constant DEFAULT_DPY_NUMERATOR = DEFAULT_APY_NUMERATOR / 365;
 
+    // errors
+    error ErrNotFound();
+    error ErrUncancelable();
+    error ErrNotEnoughStake();
+    error ErrReusedStorage();
+    error ErrItemRequired();
+    error ErrPopulatedListRequired();
+
     // events
     event AutoStakeChanged(address user, bool value);
     event StreakStartTimeChanged(address user, uint64 value);
@@ -99,7 +107,7 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
         // total number of tokens staked
         uint256 total;
         // pending withdrawals
-        Withdrawals wlist;
+        Withdrawals ws;
     }
 
     /// @custom:storage-location erc7201:ai.osmi.storage.OsmiStakingStorage
@@ -141,8 +149,8 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
     {}
 
     /**
-     * @dev Restricted function to complete any pending withdrawals for an address. This is called by the distro
-     * manager to ensure any queued withdrawals are finalized before updating allowances. Returns the number
+     * @dev Restricted external function to complete any pending withdrawals for an address. This is called by the 
+     * distro manager to ensure any queued withdrawals are finalized before updating allowances. Returns the number
      * of tokens released.
      */
     function completeWithdrawals(address user) external restricted returns(uint256) {
@@ -155,7 +163,7 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
     function _completeWithdrawals(address user) internal returns(uint256 total) {
         OsmiStakingStorage storage $ = _getOsmiStakingStorage();
         Stake storage stake = $.stakes[user];
-        Withdrawals storage list = stake.wlist;
+        Withdrawals storage list = stake.ws;
         if(list.length == 0) {
             return 0;
         }
@@ -168,21 +176,46 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
                 // We assume items are stored in timestamp order. Once we hit one that isn't old enough, we can stop.
                 break;
             }
-            // emit event
             emit WithdrawalCompleted(user, item.id, item.amount);
             released += item.amount;
             id = item.next;
             _deleteWithdrawal(list, item);
         }
         if(released > 0) {
-            require(stake.total >= released, "not enough stake to release");
+            if(list.total < released || stake.total < released) {
+                revert ErrNotEnoughStake();
+            }
+            list.total -= released;
             stake.total -= released;
         }
         return released;
     }
 
-    function _cancelWithdrawal(Withdrawals storage list, uint64 id) internal {
-        // Withdrawal storage item = _getWithdrawal(list, id);
+    /**
+     * @dev Restricted external function to cancel a withdrawal for the caller.
+     */
+    function cancelWithdrawal(uint64 id) external restricted {
+        return _cancelWithdrawal(_msgSender(), id);
+    }
+
+    /**
+     * @dev Internal function to cancel a stake withdrawal.
+     */
+    function _cancelWithdrawal(address user, uint64 id) internal {
+        OsmiStakingStorage storage $ = _getOsmiStakingStorage();
+        Stake storage stake = $.stakes[user];
+        Withdrawals storage list = stake.ws;
+        Withdrawal storage item = _getWithdrawal(list, id);
+        uint64 minTimestamp = uint64(block.timestamp - WITHDRAWAL_HOLDING_PERIOD);
+        if(item.timestamp <= minTimestamp) {
+            revert ErrUncancelable();
+        }
+        if(list.total < item.amount) {
+            revert ErrNotEnoughStake();
+        }
+        list.total -= item.amount;
+        emit WithdrawalCanceled(user, item.id, item.amount);
+        _deleteWithdrawal(list, item);
     }
 
     function _hasWithdrawal(Withdrawals storage list, uint64 id) internal view returns(bool) {
@@ -191,13 +224,17 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
 
     function _getWithdrawal(Withdrawals storage list, uint64 id) internal view returns(Withdrawal storage) {
         Withdrawal storage result = list.items[id];
-        require(id != 0 && result.id == id, "no such withdrawal");
+        if(id == 0 || result.id != id) {
+            revert ErrNotFound();
+        }
         return result;
     }
 
     function _addWithdrawal(Withdrawals storage list) internal returns (Withdrawal storage) {
         Withdrawal storage item = list.items[++list.last];
-        require(item.id == 0, "reused withdrawal storage");
+        if(item.id != 0) {
+            revert ErrReusedStorage();
+        }
         item.id = list.last;
         if(list.length == 0) {
             list.head = item.id;
@@ -213,8 +250,12 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
     }
 
     function _deleteWithdrawal(Withdrawals storage list, Withdrawal storage item) internal {
-        require(item.id != 0, "can't delete zero id");
-        require(list.length > 0, "list must not be empty");
+        if(item.id == 0) {
+            revert ErrItemRequired();
+        }
+        if(list.length == 0) {
+            revert ErrPopulatedListRequired();
+        }
         if(item.next != 0) {
             _getWithdrawal(list, item.next).prev = item.prev;
         }
