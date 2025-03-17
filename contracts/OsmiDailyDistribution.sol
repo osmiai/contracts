@@ -152,6 +152,11 @@ contract OsmiDailyDistribution is Initializable, AccessManagedUpgradeable, UUPSU
         override
     {}
 
+    function getLastDistributionTime() external view returns (uint) {
+        OsmiDailyDistributionStorage storage $ = _getOsmiDailyDistributionStorage();
+        return $.lastDistributionTime;
+    }
+
     /**
      * @dev Restricted function to set the token contract for minting.
      */

@@ -3,6 +3,7 @@
 pragma solidity ^0.8.22;
 
 import {IOsmiToken} from "./IOsmiToken.sol";
+import {IOsmiStaking} from "./IOsmiStaking.sol";
 import {IGalaBridge} from "./IGalaBridge.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EIP712Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
@@ -10,7 +11,7 @@ import {NoncesUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Nonce
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import "@openzeppelin/contracts/utils/Strings.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
 
 /**
  * @dev OsmiDistributionManager manages unlocked daily distribution.
@@ -42,6 +43,11 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
      * @dev Emitted when token contract is changed.
      */
     event TokenContractChanged(IOsmiToken tokenContract);
+
+    /**
+     * @dev Emitted when staking contract is changed.
+     */
+    event StakingContractChanged(IOsmiStaking stakingContract);
 
     /**
      * @dev Emitted when token pool is changed.
@@ -103,7 +109,7 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
     }
 
     /**
-     * @dev Ticket contains a signed ticket from the Osmi backend entitling a wallet to tranfser tokens 
+     * @dev Ticket contains a signed ticket from the Osmi backend entitling a wallet to transfer tokens 
      * from the node pool.
      */
     struct Ticket {
@@ -133,6 +139,7 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
         address [2]ticketSigners;
         mapping(address => Wallet) wallets;
         mapping(Bridge => address) bridges;
+        IOsmiStaking stakingContract;
     }
 
     // keccak256(abi.encode(uint256(keccak256("ai.osmi.storage.OsmiDistributionManager")) - 1)) & ~bytes32(uint256(0xff))
@@ -230,6 +237,35 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
     }
 
     /**
+     * @dev Public function to get the staking contract.
+     */
+    function getStakingContract() external view returns(IOsmiStaking stakingContract) {
+        return _getStakingContract();
+    }
+
+    function _getStakingContract() internal view returns(IOsmiStaking stakingContract) {
+        OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
+        return $.stakingContract;
+    }
+
+    /**
+     * @dev Restricted function to set the staking contract.
+     */
+    function setStakingContract(address stakingContract) restricted external {
+        return _setStakingContract(stakingContract);
+    }
+
+    function _setStakingContract(address stakingContract) internal {
+        require(stakingContract != address(0), "address can't be zero");
+        OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
+        if($.stakingContract == IOsmiStaking(stakingContract)) {
+            return;
+        }
+        $.stakingContract = IOsmiStaking(stakingContract);
+        emit StakingContractChanged($.stakingContract);
+    }
+
+    /**
      * @dev Public function to get the token pool.
      */
     function getTokenPool() external view returns(address tokenPool) {
@@ -307,6 +343,15 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
     function redeemAndBridge(Ticket calldata ticket, uint256 amount, Bridge bridge) restricted external returns(uint256 allowance) {
         _redeemTicket(ticket);
         return _bridgeTokens(_msgSender(), amount, bridge, "");
+    }
+
+    /**
+     * @dev Restricted external function to redeem a distribution ticket and then stake tokens from the allowance. The
+     * new allowance is returned.
+     */
+    function redeemAndStake(Ticket calldata ticket, uint256 amount) restricted external returns(uint256 allowance) {
+        _redeemTicket(ticket);
+        return _stakeTokens(_msgSender(), amount);
     }
 
     /**
@@ -462,6 +507,37 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
         // burn tax and transfer from node pool
         $.tokenContract.burnFrom($.tokenPool, tax);
         $.tokenContract.transferFrom($.tokenPool, user, amount);
+        return wallet.allowance;
+    }
+
+    /**
+     * @dev Restricted external function to stake `amount` tokens from the token pool into staking. The
+     * updated allowance is returned.
+     */
+    function stakeTokens(uint256 amount) restricted external returns(uint256 allowance) {
+        return _stakeTokens(_msgSender(), amount);
+    }
+
+    function _stakeTokens(address user, uint256 amount) internal returns(uint256 allowance) {
+        require(user != address(0), "user address can't be zero");
+        require(amount != 0, "amount can't be zero");
+        OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
+        // get the source wallet
+        Wallet storage wallet = $.wallets[user];
+        // check the allowance
+        if(wallet.allowance < amount) {
+            revert InsufficientAllowance(user, wallet.allowance, amount-wallet.allowance);
+        }
+        // update allowance
+        wallet.allowance -= amount;
+        // emit event
+        emit TokensClaimed(user, amount, Bridge.None);
+        // transfer amount to this contract
+        $.tokenContract.transferFrom($.tokenPool, address(this), amount);
+        // approve transfer from this contract to the staking contract
+        $.tokenContract.approve(address($.stakingContract), amount);
+        // stake amount tokens on behalf of user
+        $.stakingContract.stakeFor(user, amount);
         return wallet.allowance;
     }
 

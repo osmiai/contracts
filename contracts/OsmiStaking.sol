@@ -2,10 +2,10 @@
 // Compatible with OpenZeppelin Contracts ^5.0.0
 pragma solidity ^0.8.22;
 
-import {IOsmiToken} from "./IOsmiToken.sol";
-// import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-// import {EIP712Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
-// import {NoncesUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/NoncesUpgradeable.sol";
+import {IOsmiConfig} from "./IOsmiConfig.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {EIP712Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
+import {NoncesUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/NoncesUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
@@ -15,7 +15,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
  * @dev OsmiStaking manages staking of OSMI token.
  */
 /// @custom:security-contact contact@osmi.ai
-contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable { //, EIP712Upgradeable, NoncesUpgradeable {
+contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable, EIP712Upgradeable, NoncesUpgradeable {
     /**
      * @dev How long to hold withdrawals before finalizing.
      */
@@ -48,14 +48,16 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
     error ErrReusedStorage();
     error ErrItemRequired();
     error ErrPopulatedListRequired();
+    error InvalidTicketSigner(address signer, address one, address two);
 
     // events
-    event CoinsStaked(address user, uint64 timestamp, uint256 amount);
+    event TicketSignerChanged(address ticketSigner);
+    event TokensStaked(address user, uint64 timestamp, uint256 amount);
     event AutoStakeChanged(address user, bool value);
     event StreakStartTimeChanged(address user, uint64 value);
     event WithdrawalStarted(address user, uint64 id, uint64 timestamp, uint64 availableAt, uint256 amount);
-    event WithdrawalCanceled(address user, uint64 id, uint256 amount);
-    event WithdrawalCompleted(address user, uint64 id, uint256 amount);
+    event WithdrawalCanceled(address user, uint256 amount);
+    event WithdrawalCompleted(address user, uint256 amount);
 
     // flags
     uint256 constant FLAG_AUTOSTAKE = 1 << 0;
@@ -64,34 +66,10 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
      * @dev Withdrawal request for an address.
      */
     struct Withdrawal {
-        // withdrawals mapping key
-        uint64 id;
         // block.timestamp when this withdrawal was created
-        uint64 timestamp;
-        // id of the previous withdrawal
-        uint64 prev;
-        // id of the next withdrawal
-        uint64 next;
+        uint256 timestamp;
         // amount to withdraw
         uint256 amount;
-    }
-
-    /**
-     * @dev Pending withdrawals for an address.
-     */
-    struct Withdrawals {
-        // number of entries in our mapping
-        uint64 length;
-        // id used by the last withdrawal
-        uint64 last;
-        // id of the head withdrawal
-        uint64 head;
-        // id of the tail withdrawal
-        uint64 tail;
-        // total number of tokens pending withdrawal
-        uint256 total;
-        // mapping of ids to withdrawals
-        mapping(uint64 => Withdrawal) items;
     }
 
     /**
@@ -100,21 +78,19 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
     struct Stake {
         // flags for this stake (see FLAG_XXX)
         uint256 flags;
-        // numerator of this stake's apy
-        uint256 apyNumerator;
         // timestamp of when this stake's streak started
         uint256 streakStartTime;
-        // total number of tokens staked
-        uint256 total;
-        // pending withdrawals
-        Withdrawals ws;
+        // balance of tokens staked
+        uint256 balance;
     }
 
     /// @custom:storage-location erc7201:ai.osmi.storage.OsmiStakingStorage
     struct OsmiStakingStorage {
-        IOsmiToken tokenContract;
-        // IOsmiDistributionManager distroManagerContract;
+        IOsmiConfig configContract;
+        address [2]ticketSigners;
+        uint256 apyNumerator;
         mapping(address => Stake) stakes;
+        mapping(address => Withdrawal) withdrawals;
     }
 
     // keccak256(abi.encode(uint256(keccak256("ai.osmi.storage.OsmiStaking")) - 1)) & ~bytes32(uint256(0xff))
@@ -132,13 +108,14 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
     }
 
     function initialize(
-        address initialAuthority
+        address initialAuthority,
+        address ticketSigner
     ) initializer public {
         __AccessManaged_init(initialAuthority);
-        // __Nonces_init();
+        __Nonces_init();
+        __EIP712_init("OsmiStaking", "1");
         __UUPSUpgradeable_init();
-        // __EIP712_init("OsmiStaking", "1");
-        __UUPSUpgradeable_init();
+        _setTicketSigner(ticketSigner);
     }
 
     /**
@@ -151,126 +128,161 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
     {}
 
     /**
+     * @dev Return the currently recognized ticket signer addresses.
+     */
+    function getTicketSigners() external view returns(address,address) {
+        return _getTicketSigners();
+    }
+
+    function _getTicketSigners() internal view returns(address,address) {
+        OsmiStakingStorage storage $ = _getOsmiStakingStorage();
+        return ($.ticketSigners[0], $.ticketSigners[1]);
+    }
+
+    /**
+     * @dev Restricted function to set the ticket signer. Signers are storedin a double-buffered manner. This function 
+     * only updates the latest signer, pushing the previous signer into the second slot. This allows us to rotate out 
+     * signing accounts without downtime.
+     */
+    function setTicketSigner(address signer) restricted external {
+        _setTicketSigner(signer);
+    }
+
+    function _setTicketSigner(address signer) internal {
+        require (signer != address(0), "signer address can't be zero");
+        OsmiStakingStorage storage $ = _getOsmiStakingStorage();
+        if($.ticketSigners[0] == signer) {
+            return;
+        }
+        $.ticketSigners[1] = $.ticketSigners[0];
+        $.ticketSigners[0] = signer;
+        emit TicketSignerChanged(signer);
+    }
+
+    /**
      * @dev Restricted external function to complete any pending withdrawals for an address. This is called by the 
      * distro manager to ensure any queued withdrawals are finalized before updating allowances. Returns the number
      * of tokens released.
      */
-    function completeWithdrawals(address user) external restricted returns(uint256) {
-        return _completeWithdrawals(user);
+    function completeWithdrawal(address user) external restricted returns(uint256) {
+        return _completeWithdrawal(user);
     }
     
     /**
      * @dev Internal function to complete stake withdrawals. Returns the number of tokens released.
      */
-    function _completeWithdrawals(address user) internal returns(uint256 total) {
+    function _completeWithdrawal(address user) internal returns(uint256 released) {
         OsmiStakingStorage storage $ = _getOsmiStakingStorage();
-        Stake storage stake = $.stakes[user];
-        Withdrawals storage list = stake.ws;
-        if(list.length == 0) {
+        Withdrawal storage withdrawal = $.withdrawals[user];
+        if(withdrawal.timestamp == 0) {
+            // no pending withdrawal
             return 0;
         }
-        uint256 released;
-        uint64 minTimestamp = uint64(block.timestamp - WITHDRAWAL_HOLDING_PERIOD);
-        uint64 id = list.head;
-        while(id != 0) {
-            Withdrawal storage item = _getWithdrawal(list, id);
-            if(item.timestamp > minTimestamp) {
-                // We assume items are stored in timestamp order. Once we hit one that isn't old enough, we can stop.
-                break;
-            }
-            emit WithdrawalCompleted(user, item.id, item.amount);
-            released += item.amount;
-            id = item.next;
-            _deleteWithdrawal(list, item);
+        Stake storage stake = $.stakes[user];
+        if(block.timestamp < (withdrawal.timestamp + WITHDRAWAL_HOLDING_PERIOD)) {
+            // withdrawal is still pending
+            return 0;
         }
-        if(released > 0) {
-            if(list.total < released || stake.total < released) {
-                revert ErrNotEnoughStake();
-            }
-            list.total -= released;
-            stake.total -= released;
+        if(stake.balance < withdrawal.amount) {
+            revert ErrNotEnoughStake();
         }
+        stake.balance -= withdrawal.amount;
+        emit WithdrawalCompleted(user, withdrawal.amount);
+        released = withdrawal.amount;
+        delete $.withdrawals[user];
         return released;
     }
 
     /**
      * @dev Restricted external function to cancel a withdrawal for the caller.
      */
-    function cancelWithdrawal(uint64 id) external restricted {
-        return _cancelWithdrawal(_msgSender(), id);
+    function cancelWithdrawal() external restricted {
+        return _cancelWithdrawal(_msgSender());
     }
 
     /**
      * @dev Internal function to cancel a stake withdrawal.
      */
-    function _cancelWithdrawal(address user, uint64 id) internal {
+    function _cancelWithdrawal(address user) internal {
+        // OsmiStakingStorage storage $ = _getOsmiStakingStorage();
+        // Withdrawal storage withdrawal = _getWithdrawal(list, id);
+        // uint64 minTimestamp = uint64(block.timestamp - WITHDRAWAL_HOLDING_PERIOD);
+        // if(item.timestamp <= minTimestamp) {
+        //     revert ErrUncancelable();
+        // }
+        // if(list.total < item.amount) {
+        //     revert ErrNotEnoughStake();
+        // }
+        // list.total -= item.amount;
+        // emit WithdrawalCanceled(user, item.id, item.amount);
+        // _deleteWithdrawal(list, item);
+    }
+
+    /**
+     * @dev Restricted external function to set auto staking setting for the caller.
+     */
+    function setAutoStake(bool v) external restricted {
+        _setAutoStake(_msgSender(), v);
+    }
+
+    function _setAutoStake(address user, bool v) internal {
         OsmiStakingStorage storage $ = _getOsmiStakingStorage();
-        Stake storage stake = $.stakes[user];
-        Withdrawals storage list = stake.ws;
-        Withdrawal storage item = _getWithdrawal(list, id);
-        uint64 minTimestamp = uint64(block.timestamp - WITHDRAWAL_HOLDING_PERIOD);
-        if(item.timestamp <= minTimestamp) {
-            revert ErrUncancelable();
+        Stake storage s = $.stakes[user];
+        bool cur = (s.flags & FLAG_AUTOSTAKE) == FLAG_AUTOSTAKE;
+        if(v != cur) {
+            emit AutoStakeChanged(user, v);
+            if(v) {
+                s.flags |= FLAG_AUTOSTAKE;
+            } else {
+                s.flags &= ~FLAG_AUTOSTAKE;
+            }
         }
-        if(list.total < item.amount) {
-            revert ErrNotEnoughStake();
-        }
-        list.total -= item.amount;
-        emit WithdrawalCanceled(user, item.id, item.amount);
-        _deleteWithdrawal(list, item);
     }
 
-    function _hasWithdrawal(Withdrawals storage list, uint64 id) internal view returns(bool) {
-        return id != 0 && list.items[id].id == id;
+    /**
+     * @dev Returns the auto stake setting for the caller.
+     */
+    function getAutoStake() external view returns (bool) {
+        return _getAutoStake(_msgSender());
     }
 
-    function _getWithdrawal(Withdrawals storage list, uint64 id) internal view returns(Withdrawal storage) {
-        Withdrawal storage result = list.items[id];
-        if(id == 0 || result.id != id) {
-            revert ErrNotFound();
-        }
-        return result;
+    /**
+     * @dev Returns the auto stake setting for a user.
+     */
+    function getAutoStakeFor(address user) external view returns (bool) {
+        return _getAutoStake(user);
     }
 
-    function _addWithdrawal(Withdrawals storage list) internal returns (Withdrawal storage) {
-        Withdrawal storage item = list.items[++list.last];
-        if(item.id != 0) {
-            revert ErrReusedStorage();
-        }
-        item.id = list.last;
-        if(list.length == 0) {
-            list.head = item.id;
-            list.tail = item.id;
-        } else {
-            Withdrawal storage tail = _getWithdrawal(list, list.tail);
-            tail.next = item.id;
-            item.prev = list.tail;
-            list.tail - item.id;
-        }
-        list.length++;
-        return item;
+    function _getAutoStake(address user) internal view returns(bool) {
+        OsmiStakingStorage storage $ = _getOsmiStakingStorage();
+        Stake storage s = $.stakes[user];
+        bool cur = (s.flags & FLAG_AUTOSTAKE) == FLAG_AUTOSTAKE;
+        return cur;
     }
 
-    function _deleteWithdrawal(Withdrawals storage list, Withdrawal storage item) internal {
-        if(item.id == 0) {
-            revert ErrItemRequired();
+    /**
+     * @dev Restricted external function to stake from the caller's account.
+     */
+    function stake(uint256 amount) external restricted {
+        address caller = _msgSender();
+        _stake(caller, caller, amount);
+    }
+
+    /**
+     * @dev Restricted external function to stake from the caller's account on behalf of the user.
+     */
+    function stakeFor(address user, uint256 amount) external restricted {
+        _stake(_msgSender(), user, amount);
+    }
+
+    function _stake(address from, address to, uint256 amount) internal {
+        OsmiStakingStorage storage $ = _getOsmiStakingStorage();
+    }
+
+    function _validateTicketSigner(address v) internal view {
+        OsmiStakingStorage storage $ = _getOsmiStakingStorage();
+        if (v != $.ticketSigners[0] && v != $.ticketSigners[1]) {
+            revert InvalidTicketSigner(v, $.ticketSigners[0], $.ticketSigners[1]);
         }
-        if(list.length == 0) {
-            revert ErrPopulatedListRequired();
-        }
-        if(item.next != 0) {
-            _getWithdrawal(list, item.next).prev = item.prev;
-        }
-        if(item.prev != 0) {
-            _getWithdrawal(list, item.prev).next = item.next;
-        }
-        if(item.id == list.head) {
-            list.head = item.next;
-        }
-        if(item.id == list.tail) {
-            list.tail = item.prev;
-        }
-        list.length--;
-        delete list.items[item.id];
     }
 }
