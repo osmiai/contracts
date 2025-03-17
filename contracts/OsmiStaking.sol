@@ -9,7 +9,6 @@ import {NoncesUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Nonce
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-// import "@openzeppelin/contracts/utils/Strings.sol";
 
 /**
  * @dev OsmiStaking manages staking of OSMI token.
@@ -22,24 +21,14 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
     uint256 constant WITHDRAWAL_HOLDING_PERIOD = 14 days;
 
     /**
-     * @dev Maximum number of pending withdrawals per address.
-     */
-    uint256 constant MAX_PENDING_WITHDRAWALS = 5;
-
-    /**
      * @dev Denominator of ratio calculations in this contract.
      */
     uint256 constant RATIO_DENOMINATOR = 1_000_000_000;
 
     /**
-     * @dev Annual percentage yield (APY) numerator.
+     * @dev Max APY numerator setting. (100%)
      */
-    uint256 constant DEFAULT_APY_NUMERATOR = 75_000_000; // 7.5%
-
-    /**
-     * @dev Daily percentage yield numerator.
-     */
-    uint256 constant DEFAULT_DPY_NUMERATOR = DEFAULT_APY_NUMERATOR / 365;
+    uint256 constant APY_NUMERATOR_MAX = RATIO_DENOMINATOR;
 
     // errors
     error ErrNotFound();
@@ -48,9 +37,14 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
     error ErrReusedStorage();
     error ErrItemRequired();
     error ErrPopulatedListRequired();
+    error APYOutOfRange();
+    error DurationOutOfRange();
     error InvalidTicketSigner(address signer, address one, address two);
 
     // events
+    event HoldingPeriodChanged(uint256 duration);
+    event APYChanged(uint256 apy);
+    event ConfigContractChanged(IOsmiConfig configContract);
     event TicketSignerChanged(address ticketSigner);
     event TokensStaked(address user, uint64 timestamp, uint256 amount);
     event AutoStakeChanged(address user, bool value);
@@ -109,12 +103,14 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
 
     function initialize(
         address initialAuthority,
+        IOsmiConfig configContract,
         address ticketSigner
     ) initializer public {
         __AccessManaged_init(initialAuthority);
         __Nonces_init();
         __EIP712_init("OsmiStaking", "1");
         __UUPSUpgradeable_init();
+        _setConfigContract(configContract);
         _setTicketSigner(ticketSigner);
     }
 
@@ -126,6 +122,65 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
         restricted
         override
     {}
+
+    /**
+     * @dev Return the currec config contract.
+     */
+    function getConfigContract() external view returns(IOsmiConfig) {
+        return _getConfigContract();
+    }
+
+    function _getConfigContract() internal view returns(IOsmiConfig) {
+        OsmiStakingStorage storage $ = _getOsmiStakingStorage();
+        return $.configContract;
+    }
+
+    /**
+     * @dev Restricted function to set the config contract.
+     */
+    function setConfigContract(IOsmiConfig v) external restricted {
+        _setConfigContract(v);
+    }
+
+    function _setConfigContract(IOsmiConfig v) internal {
+        OsmiStakingStorage storage $ = _getOsmiStakingStorage();
+        if($.configContract == v) {
+            return;
+        }
+        $.configContract = v;
+        emit ConfigContractChanged(v);
+    }
+
+    /**
+     * @dev Return the current APY.
+     */
+    function getAPY() external view returns(uint256) {
+        return _getAPY();
+    }
+
+    function _getAPY() internal view returns(uint256) {
+        OsmiStakingStorage storage $ = _getOsmiStakingStorage();
+        return $.apyNumerator;
+    }
+
+    /**
+     * @dev Restricted function to set the APY numerator.
+     */
+    function setAPY(uint256 v) external restricted {
+        _setAPY(v);
+    }
+
+    function _setAPY(uint256 v) internal {
+        if(v == 0 || v > APY_NUMERATOR_MAX) {
+            revert APYOutOfRange();
+        }
+        OsmiStakingStorage storage $ = _getOsmiStakingStorage();
+        if($.apyNumerator == v) {
+            return;
+        }
+        $.apyNumerator = v;
+        emit APYChanged(v);
+    }
 
     /**
      * @dev Return the currently recognized ticket signer addresses.
