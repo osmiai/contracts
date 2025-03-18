@@ -51,7 +51,7 @@ task(
   try {
     const response = await projectDistroManager.bridgeTokens(1, 1)
     console.log(response)
-  } catch(err) {
+  } catch (err) {
     const fun = err as ProviderRpcError
     console.log(fun.name)
     console.log(fun.message)

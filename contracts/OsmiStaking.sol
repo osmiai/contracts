@@ -3,22 +3,27 @@
 pragma solidity ^0.8.22;
 
 import {IOsmiConfig} from "./IOsmiConfig.sol";
+import {IOsmiToken} from "./IOsmiToken.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EIP712Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
 import {NoncesUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/NoncesUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
 
 /**
  * @dev OsmiStaking manages staking of OSMI token.
  */
 /// @custom:security-contact contact@osmi.ai
 contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable, EIP712Upgradeable, NoncesUpgradeable {
+    bytes32 private constant BALANCE_TICKET_TYPEHASH = 
+        keccak256("Ticket(address user,uint256 timestamp,uint256 balance,uint256 nonce)");
+
     /**
-     * @dev How long to hold withdrawals before finalizing.
+     * @dev Default APY numerator.
      */
-    uint256 constant WITHDRAWAL_HOLDING_PERIOD = 14 days;
+    uint256 constant DEFAULT_APY_NUMERATOR = 160_000_000;
 
     /**
      * @dev Denominator of ratio calculations in this contract.
@@ -26,45 +31,54 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
     uint256 constant RATIO_DENOMINATOR = 1_000_000_000;
 
     /**
+     * @dev Numerator of fast withdrawal tax (10%).
+     */
+    uint constant FAST_WITHDRAWAL_TAX_NUMERATOR = 100_000_000;
+
+    /**
      * @dev Max APY numerator setting. (100%)
      */
     uint256 constant APY_NUMERATOR_MAX = RATIO_DENOMINATOR;
 
+    /**
+     * @dev Delay for normal withdrawals.
+     */
+    uint256 constant WITHDRAWAL_DELAY = 14 days;
+
     // errors
-    error ErrNotFound();
-    error ErrUncancelable();
-    error ErrNotEnoughStake();
-    error ErrReusedStorage();
-    error ErrItemRequired();
-    error ErrPopulatedListRequired();
+    error Uncancelable();
+    error InsufficientBalance();
     error APYOutOfRange();
-    error DurationOutOfRange();
-    error InvalidTicketSigner(address signer, address one, address two);
+    error InvalidTicketSigner();
+    error WrongTicketOwner();
+    error WithdrawalAlreadyInProgress();
+    error ZeroAddressNotAllowed();
+    error ZeroAmountNotAllowed();
 
     // events
-    event HoldingPeriodChanged(uint256 duration);
     event APYChanged(uint256 apy);
     event ConfigContractChanged(IOsmiConfig configContract);
     event TicketSignerChanged(address ticketSigner);
-    event TokensStaked(address user, uint64 timestamp, uint256 amount);
+    event TokensDeposited(address from, address to, uint256 amount);
     event AutoStakeChanged(address user, bool value);
-    event StreakStartTimeChanged(address user, uint64 value);
-    event WithdrawalStarted(address user, uint64 id, uint64 timestamp, uint64 availableAt, uint256 amount);
-    event WithdrawalCanceled(address user, uint256 amount);
-    event WithdrawalCompleted(address user, uint256 amount);
+    event StreakStartTimeChanged(address user, uint256 value);
+    event WithdrawalStarted(address user, uint256 timestamp, uint256 amount);
+    event WithdrawalCanceled(address user, uint256 timestamp, uint256 amount);
+
+    /**
+     * @dev Ticket is a signed message from the Osmi backend that permits the user to withdraw.
+     */
+    struct Ticket {
+        address user;
+        uint256 timestamp;
+        uint256 balance;
+        uint8 v;
+        bytes32 r;
+        bytes32 s;
+    }
 
     // flags
     uint256 constant FLAG_AUTOSTAKE = 1 << 0;
-
-    /**
-     * @dev Withdrawal request for an address.
-     */
-    struct Withdrawal {
-        // block.timestamp when this withdrawal was created
-        uint256 timestamp;
-        // amount to withdraw
-        uint256 amount;
-    }
 
     /**
      * @dev Staking state for an address.
@@ -74,8 +88,10 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
         uint256 flags;
         // timestamp of when this stake's streak started
         uint256 streakStartTime;
-        // balance of tokens staked
-        uint256 balance;
+        // available timestamp of pending withdrawal
+        uint256 withdrawalAvailableAt;
+        // amount of pending withdrawal from node
+        uint256 withdrawalAmount;
     }
 
     /// @custom:storage-location erc7201:ai.osmi.storage.OsmiStakingStorage
@@ -84,7 +100,6 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
         address [2]ticketSigners;
         uint256 apyNumerator;
         mapping(address => Stake) stakes;
-        mapping(address => Withdrawal) withdrawals;
     }
 
     // keccak256(abi.encode(uint256(keccak256("ai.osmi.storage.OsmiStaking")) - 1)) & ~bytes32(uint256(0xff))
@@ -112,6 +127,7 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
         __UUPSUpgradeable_init();
         _setConfigContract(configContract);
         _setTicketSigner(ticketSigner);
+        _setAPY(DEFAULT_APY_NUMERATOR);
     }
 
     /**
@@ -215,69 +231,17 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
     }
 
     /**
-     * @dev Restricted external function to complete any pending withdrawals for an address. This is called by the 
-     * distro manager to ensure any queued withdrawals are finalized before updating allowances. Returns the number
-     * of tokens released.
-     */
-    function completeWithdrawal(address user) external restricted returns(uint256) {
-        return _completeWithdrawal(user);
-    }
-    
-    /**
-     * @dev Internal function to complete stake withdrawals. Returns the number of tokens released.
-     */
-    function _completeWithdrawal(address user) internal returns(uint256 released) {
-        OsmiStakingStorage storage $ = _getOsmiStakingStorage();
-        Withdrawal storage withdrawal = $.withdrawals[user];
-        if(withdrawal.timestamp == 0) {
-            // no pending withdrawal
-            return 0;
-        }
-        Stake storage stake = $.stakes[user];
-        if(block.timestamp < (withdrawal.timestamp + WITHDRAWAL_HOLDING_PERIOD)) {
-            // withdrawal is still pending
-            return 0;
-        }
-        if(stake.balance < withdrawal.amount) {
-            revert ErrNotEnoughStake();
-        }
-        stake.balance -= withdrawal.amount;
-        emit WithdrawalCompleted(user, withdrawal.amount);
-        released = withdrawal.amount;
-        delete $.withdrawals[user];
-        return released;
-    }
-
-    /**
-     * @dev Restricted external function to cancel a withdrawal for the caller.
-     */
-    function cancelWithdrawal() external restricted {
-        return _cancelWithdrawal(_msgSender());
-    }
-
-    /**
-     * @dev Internal function to cancel a stake withdrawal.
-     */
-    function _cancelWithdrawal(address user) internal {
-        // OsmiStakingStorage storage $ = _getOsmiStakingStorage();
-        // Withdrawal storage withdrawal = _getWithdrawal(list, id);
-        // uint64 minTimestamp = uint64(block.timestamp - WITHDRAWAL_HOLDING_PERIOD);
-        // if(item.timestamp <= minTimestamp) {
-        //     revert ErrUncancelable();
-        // }
-        // if(list.total < item.amount) {
-        //     revert ErrNotEnoughStake();
-        // }
-        // list.total -= item.amount;
-        // emit WithdrawalCanceled(user, item.id, item.amount);
-        // _deleteWithdrawal(list, item);
-    }
-
-    /**
-     * @dev Restricted external function to set auto staking setting for the caller.
+     * @dev Restricted external function to set auto staking for the caller.
      */
     function setAutoStake(bool v) external restricted {
         _setAutoStake(_msgSender(), v);
+    }
+
+    /**
+     * @dev Restricted external function to set auto staking for a user.
+     */
+    function setAutoStakeFor(address user, bool v) external restricted {
+        _setAutoStake(user, v);
     }
 
     function _setAutoStake(address user, bool v) internal {
@@ -316,15 +280,7 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
     }
 
     /**
-     * @dev Restricted external function to stake from the caller's account.
-     */
-    function stake(uint256 amount) external restricted {
-        address caller = _msgSender();
-        _stake(caller, caller, amount);
-    }
-
-    /**
-     * @dev Restricted external function to stake from the caller's account on behalf of the user.
+     * @dev Restricted external function to stake from the caller's account into the user's account.
      */
     function stakeFor(address user, uint256 amount) external restricted {
         _stake(_msgSender(), user, amount);
@@ -332,12 +288,142 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
 
     function _stake(address from, address to, uint256 amount) internal {
         OsmiStakingStorage storage $ = _getOsmiStakingStorage();
+        // get configured addresses
+        IOsmiConfig configContract = $.configContract;
+        IOsmiToken tokenContract = (IOsmiToken)(configContract.getTokenContract());
+        address stakingPool = configContract.getStakingPool();
+        // transfer tokens to the staking pool
+        tokenContract.transferFrom(from, stakingPool, amount);
+        // add to stake
+        Stake storage s = $.stakes[to];
+        emit TokensDeposited(from, to, amount);
+        // update streak start time if this is the first stake
+        if(s.streakStartTime == 0) {
+            s.streakStartTime = block.timestamp;
+            emit StreakStartTimeChanged(to, block.timestamp);
+        }
+    }
+
+    /**
+     * @dev Restricted function to initiate a withdrawal of staked tokens for the caller.
+     */
+    function withdraw(Ticket calldata ticket, uint256 amount, bool fast) external restricted {
+        _withdraw(ticket, _msgSender(), amount, fast);
+    }
+
+    function _withdraw(Ticket calldata ticket, address user, uint256 amount, bool fast) internal {
+        if(user == address(0)) {
+            revert ZeroAddressNotAllowed();
+        }
+        if(amount == 0) {
+            revert ZeroAmountNotAllowed();
+        }
+        // verify ticket state
+        if(ticket.user != user) {
+            revert WrongTicketOwner();
+        }
+        if(amount > ticket.balance) {
+            revert InsufficientBalance();
+        }
+        _verifyTicketSignature(ticket);
+        // update state
+        OsmiStakingStorage storage $ = _getOsmiStakingStorage();
+        Stake storage s = $.stakes[user];
+        // disallow multiple pending withdrawals
+        if(s.withdrawalAvailableAt > block.timestamp) {
+            revert WithdrawalAlreadyInProgress();
+        }
+        // update streak start time
+        if(amount == ticket.balance) {
+            s.streakStartTime = 0;
+        } else {
+            s.streakStartTime = block.timestamp;
+        }
+        emit StreakStartTimeChanged(user, s.streakStartTime);
+        // get configured addresses
+        IOsmiConfig configContract = $.configContract;
+        IOsmiToken tokenContract = (IOsmiToken)(configContract.getTokenContract());
+        address stakingPool = configContract.getStakingPool();
+        address nodeRewardPool = configContract.getNodeRewardPool();
+        if(fast) {
+            // handle immediate withdrawal
+            // calculate and deduct tax
+            uint256 tax = Math.mulDiv(amount, FAST_WITHDRAWAL_TAX_NUMERATOR, RATIO_DENOMINATOR);
+            amount -= tax;
+            if(tax > 0) {
+                // burn tax
+                tokenContract.burnFrom(stakingPool, tax);
+            }
+            // emit event; amount is available now
+            emit WithdrawalStarted(user, block.timestamp, amount);
+        } else {
+            // configure pending withdrawal
+            s.withdrawalAmount = amount;
+            s.withdrawalAvailableAt = block.timestamp + WITHDRAWAL_DELAY;
+            // emit event; amount is available later
+            emit WithdrawalStarted(user, s.withdrawalAvailableAt, amount);
+        }
+        // Transfer from the staking pool to the node rewards pool. We do this now to ensure tokens are available
+        // to claim when the withdrawal delay is over. Otherwise we'd need another transaction. See _cancelWithdrawal
+        // for the reclaim transfer when canceling.
+        tokenContract.transferFrom(stakingPool, nodeRewardPool, amount);
+    }
+
+    /**
+     * @dev Restricted external function to cancel a withdrawal for the caller.
+     */
+    function cancelWithdrawal() external restricted {
+        return _cancelWithdrawal(_msgSender());
+    }
+
+    /**
+     * @dev Internal function to cancel a stake withdrawal.
+     */
+    function _cancelWithdrawal(address user) internal {
+        OsmiStakingStorage storage $ = _getOsmiStakingStorage();
+        Stake storage s = $.stakes[user];
+        if(s.withdrawalAvailableAt == 0) {
+            return;
+        }
+        if(s.withdrawalAmount == 0) {
+            revert ZeroAmountNotAllowed();
+        }
+        if(block.timestamp >= s.withdrawalAvailableAt) {
+            revert Uncancelable();
+        }
+        // get configured addresses
+        IOsmiConfig configContract = $.configContract;
+        IOsmiToken tokenContract = (IOsmiToken)(configContract.getTokenContract());
+        address stakingPool = configContract.getStakingPool();
+        address nodeRewardPool = configContract.getNodeRewardPool();
+        // emit event
+        emit WithdrawalCanceled(user, s.withdrawalAvailableAt, s.withdrawalAmount);
+        // transfer from the node reward pool back to the staking pool
+        tokenContract.transferFrom(nodeRewardPool, stakingPool, s.withdrawalAmount);
+        // zero out the request
+        s.withdrawalAvailableAt = 0;
+        s.withdrawalAmount = 0;
+    }
+
+    function _verifyTicketSignature(Ticket calldata ticket) internal returns (uint256 nonce) {
+        nonce = _useNonce(ticket.user);
+        bytes32 structHash = keccak256(abi.encode(
+            BALANCE_TICKET_TYPEHASH, 
+            ticket.user, 
+            ticket.timestamp,
+            ticket.balance, 
+            nonce
+        ));
+        bytes32 hash = _hashTypedDataV4(structHash);
+        address recoveredSigner = ECDSA.recover(hash, ticket.v, ticket.r, ticket.s);
+        _validateTicketSigner(recoveredSigner);
+        return nonce;
     }
 
     function _validateTicketSigner(address v) internal view {
         OsmiStakingStorage storage $ = _getOsmiStakingStorage();
         if (v != $.ticketSigners[0] && v != $.ticketSigners[1]) {
-            revert InvalidTicketSigner(v, $.ticketSigners[0], $.ticketSigners[1]);
+            revert InvalidTicketSigner();
         }
     }
 }

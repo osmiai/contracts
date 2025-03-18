@@ -8,6 +8,7 @@ import "./tasks/osmi-tge"
 import "./tasks/osmi-status"
 import "./tasks/osmi-admin"
 import "./tasks/osmi-distribution"
+import "./tasks/osmi-init-config"
 
 const ALCHEMY_URL_SEPOLIA = vars.get("ALCHEMY_URL_SEPOLIA")
 const ALCHEMY_URL_MAINNET = vars.get("ALCHEMY_URL_MAINNET")

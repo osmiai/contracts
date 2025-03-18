@@ -161,6 +161,45 @@ export const OsmiDistributionManagerProxyModule = buildModule("OsmiDistributionM
     return { osmiDistributionManagerProxy }
 })
 
+export const OsmiConfigProxyModule = buildModule("OsmiConfigProxyModule", (builder) => {
+    const { osmiAccessManagerProxy } = builder.useModule(OsmiAccessManagerProxyModule)
+    
+    // deploy the implementation contract
+    const osmiConfig = builder.contract("OsmiConfig")
+
+    // encode the initalize function call for the contract
+    const initialize = builder.encodeFunctionCall(osmiConfig, "initialize", [
+        osmiAccessManagerProxy,
+    ])
+
+    // deploy the ERC1967 proxy, pointing to the initial implementation
+    const osmiConfigProxy = builder.contract("ERC1967Proxy", [osmiConfig, initialize])
+
+    // return the proxy
+    return { osmiConfigProxy }
+})
+
+export const OsmiStakingProxyModule = buildModule("OsmiStakingProxyModule", (builder) => {
+    const { osmiAccessManagerProxy } = builder.useModule(OsmiAccessManagerProxyModule)
+    const { osmiConfigProxy } = builder.useModule(OsmiConfigProxyModule)
+
+    // deploy the implementation contract
+    const osmiStaking = builder.contract("OsmiStaking")
+
+    // encode the initalize function call for the contract
+    const initialize = builder.encodeFunctionCall(osmiStaking, "initialize", [
+        osmiAccessManagerProxy,
+        osmiConfigProxy,
+        vars.get("OSMI_DISTRIBUTION_TICKET_SIGNER"),        
+    ])
+
+    // deploy the ERC1967 proxy, pointing to the initial implementation
+    const osmiStakingProxy = builder.contract("ERC1967Proxy", [osmiStaking, initialize])
+
+    // return the proxy
+    return { osmiStakingProxy }
+})
+
 export const OsmiModule = buildModule("OsmiModule", (builder) => {
     const { osmiAccessManagerProxy } = builder.useModule(OsmiAccessManagerProxyModule)
     const { osmiProxy } = builder.useModule(OsmiTokenProxyModule)
@@ -168,6 +207,8 @@ export const OsmiModule = buildModule("OsmiModule", (builder) => {
     const { osmiDailyDistributionProxy } = builder.useModule(OsmiDailyDistributionProxyModule)
     const { osmiNodeFactoryProxy } = builder.useModule(OsmiNodeFactoryProxyModule)
     const { osmiDistributionManagerProxy } = builder.useModule(OsmiDistributionManagerProxyModule)
+    const { osmiConfigProxy } = builder.useModule(OsmiConfigProxyModule)
+    const { osmiStakingProxy } = builder.useModule(OsmiStakingProxyModule)
     return { 
         osmiAccessManagerProxy,
         osmiProxy,
@@ -175,6 +216,7 @@ export const OsmiModule = buildModule("OsmiModule", (builder) => {
         osmiDailyDistributionProxy,
         osmiNodeFactoryProxy,
         osmiDistributionManagerProxy,
+        osmiConfigProxy,
      }
 })
 

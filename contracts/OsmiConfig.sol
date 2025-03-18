@@ -6,7 +6,6 @@ import "@openzeppelin/contracts-upgradeable/access/manager/AccessManagedUpgradea
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
-import "./IGalaBridge.sol";
 import "./IOsmiDailyDistribution.sol";
 import "./IOsmiDistributionManager.sol";
 import "./IOsmiNode.sol";

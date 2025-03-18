@@ -3,5 +3,6 @@
 pragma solidity ^0.8.20;
 
 interface IOsmiStaking {
-    function stakeFor(address user, uint256 amount) external;    
+    function stakeFor(address user, uint256 amount) external;
+    function setAutoStakeFor(address user, bool v) external;
 }

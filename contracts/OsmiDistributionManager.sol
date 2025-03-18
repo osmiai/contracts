@@ -3,6 +3,7 @@
 pragma solidity ^0.8.22;
 
 import {IOsmiToken} from "./IOsmiToken.sol";
+import {IOsmiConfig} from "./IOsmiConfig.sol";
 import {IOsmiStaking} from "./IOsmiStaking.sol";
 import {IGalaBridge} from "./IGalaBridge.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
@@ -39,65 +40,31 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
      */
     uint constant DISTRIBUTION_WINDOW = 1 days - 1 hours;
 
-    /**
-     * @dev Emitted when token contract is changed.
-     */
+    // deprecated events
     event TokenContractChanged(IOsmiToken tokenContract);
-
-    /**
-     * @dev Emitted when staking contract is changed.
-     */
-    event StakingContractChanged(IOsmiStaking stakingContract);
-
-    /**
-     * @dev Emitted when token pool is changed.
-     */
     event TokenPoolChanged(address tokenPool);
 
-    /**
-     * @dev Emitted when ticket signer is changed.
-     */
+    // events
+    event UpgradeMigration(uint256 version);
+    event ConfigContractChanged(IOsmiConfig configContract);
     event TicketSignerChanged(address ticketSigner);
-
-    /**
-     * @dev Emitted when a bridge contract is changed.
-     */
     event BridgeContractChanged(Bridge bridge, address bridgeContract);
-
-    /**
-     * @dev Emitted when claim ticket is redeemed by a user.
-     */
     event TicketRedeemed(address user, uint256 amount, uint256 timestamp);
-
-    /**
-     * @dev Emitted when tokens are claimed.
-     */
     event TokensClaimed(address user, uint256 amount, Bridge bridge);
-
-    /**
-     * @dev Emitted when tokens are bridged to a custom target.
-     */
     event TokensBridgedTo(address user, uint256 amount, Bridge bridge, string target);
+    event TokensStaked(address user, uint256 amount);
+    event TokensUnstaked(address user, uint256 amount);
 
-    /**
-     * @dev Invalid ticket signer.
-     */
+    // errors
     error InvalidTicketSigner(address signer, address one, address two);
-
-    /**
-     * @dev Mismatched signature.
-     */
     error InvalidSigner(address signer, address owner);
-
-    /**
-     * @dev Insufficient allowance to transfer tokens.
-     */
     error InsufficientAllowance(address user, uint256 allowance, uint256 needed);
-
-    /**
-     * @dev Invalid ticket hash.
-     */
     error InvalidTicketHash(bytes32 expected, bytes32 actual);
+    error ZeroAddressNotAllowed();
+    error ZeroAmountNotAllowed();
+    error UnsupportedBridge();
+    error TicketExpired();
+    error TicketIssuedTooSoon();
 
     /**
      * @dev Bridge identifies bridges we can use.
@@ -134,12 +101,11 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
 
     /// @custom:storage-location erc7201:ai.osmi.storage.OsmiDistributionManager
     struct OsmiDistributionManagerStorage {
-        IOsmiToken tokenContract;
-        address tokenPool;
+        IOsmiConfig configContract;
+        address unused_0;
         address [2]ticketSigners;
         mapping(address => Wallet) wallets;
         mapping(Bridge => address) bridges;
-        IOsmiStaking stakingContract;
     }
 
     // keccak256(abi.encode(uint256(keccak256("ai.osmi.storage.OsmiDistributionManager")) - 1)) & ~bytes32(uint256(0xff))
@@ -158,8 +124,7 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
 
     function initialize(
         address initialAuthority, 
-        address tokenContract, 
-        address tokenPool, 
+        address configContract, 
         address ticketSigner
     ) initializer public {
         __AccessManaged_init(initialAuthority);
@@ -167,8 +132,7 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
         __UUPSUpgradeable_init();
         __EIP712_init("OsmiDistributionManager", "1");
         __UUPSUpgradeable_init();
-        _setTokenContract(tokenContract);
-        _setTokenPool(tokenPool);
+        _setConfigContract(configContract);
         _setTicketSigner(ticketSigner);
     }
 
@@ -189,7 +153,9 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
     }
 
     function _getBridgeContract(Bridge bridge) internal view returns(address) {
-        require(bridge == Bridge.GalaChain, "unsupported bridge");
+        if(bridge != Bridge.GalaChain) {
+            revert UnsupportedBridge();
+        }
         OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
         return $.bridges[bridge];
     }
@@ -198,7 +164,9 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
      * @dev Restricted function to get a bridge contract address.
      */
     function setBridgeContract(Bridge bridge, address bridgeContract) restricted external {
-        require(bridge > Bridge.None && bridge < Bridge.Max, "unsupported bridge");
+        if(bridge <= Bridge.None || bridge >= Bridge.Max) {
+            revert UnsupportedBridge();
+        }
         OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
         if($.bridges[bridge] == bridgeContract) {
             return;
@@ -208,90 +176,34 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
     }
 
     /**
-     * @dev Public function to get the token contract.
+     * @dev Public function to get the config contract.
      */
-    function getTokenContract() external view returns(IOsmiToken tokenContract) {
-        return _getTokenContract();
+    function getConfigContract() external view returns(IOsmiConfig) {
+        return _getConfigContract();
     }
 
-    function _getTokenContract() internal view returns(IOsmiToken tokenContract) {
+    function _getConfigContract() internal view returns(IOsmiConfig) {
         OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
-        return $.tokenContract;
+        return $.configContract;
     }
 
     /**
-     * @dev Restricted function to set the token contract for purchasing.
+     * @dev Restricted function to set the config contract.
      */
-    function setTokenContract(address tokenContract) restricted external {
-        return _setTokenContract(tokenContract);
+    function setConfigContract(address configContract) restricted external {
+        return _setConfigContract(configContract);
     }
 
-    function _setTokenContract(address tokenContract) internal {
-        require(tokenContract != address(0), "token contract can't be zero");
+    function _setConfigContract(address configContract) internal {
+        if(configContract == address(0)) {
+            revert ZeroAddressNotAllowed();
+        }
         OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
-        if($.tokenContract == IOsmiToken(tokenContract)) {
+        if($.configContract == IOsmiConfig(configContract)) {
             return;
         }
-        $.tokenContract = IOsmiToken(tokenContract);
-        emit TokenContractChanged($.tokenContract);
-    }
-
-    /**
-     * @dev Public function to get the staking contract.
-     */
-    function getStakingContract() external view returns(IOsmiStaking stakingContract) {
-        return _getStakingContract();
-    }
-
-    function _getStakingContract() internal view returns(IOsmiStaking stakingContract) {
-        OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
-        return $.stakingContract;
-    }
-
-    /**
-     * @dev Restricted function to set the staking contract.
-     */
-    function setStakingContract(address stakingContract) restricted external {
-        return _setStakingContract(stakingContract);
-    }
-
-    function _setStakingContract(address stakingContract) internal {
-        require(stakingContract != address(0), "address can't be zero");
-        OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
-        if($.stakingContract == IOsmiStaking(stakingContract)) {
-            return;
-        }
-        $.stakingContract = IOsmiStaking(stakingContract);
-        emit StakingContractChanged($.stakingContract);
-    }
-
-    /**
-     * @dev Public function to get the token pool.
-     */
-    function getTokenPool() external view returns(address tokenPool) {
-        return _getTokenPool();
-    }
-
-    function _getTokenPool() internal view returns(address tokenPool) {
-        OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
-        return $.tokenPool;
-    }
-
-    /**
-     * @dev Restricted function to set the address of the token pool.
-     */
-    function setTokenPool(address tokenPool) restricted external {
-        return _setTokenPool(tokenPool);
-    }
-
-    function _setTokenPool(address tokenPool) internal {
-        require(tokenPool != address(0), "token pool can't be zero");
-        OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
-        if($.tokenPool == tokenPool) {
-            return;
-        }
-        $.tokenPool = tokenPool;
-        emit TokenPoolChanged($.tokenPool);
+        $.configContract = IOsmiConfig(configContract);
+        emit ConfigContractChanged($.configContract);
     }
 
     /**
@@ -317,7 +229,9 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
     }
 
     function _setTicketSigner(address signer) internal {
-        require (signer != address(0), "signer address can't be zero");
+        if(signer == address(0)) {
+            revert ZeroAddressNotAllowed();
+        }
         OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
         if($.ticketSigners[0] == signer) {
             return;
@@ -394,8 +308,12 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
     function _bridgeTokens(
         address user, uint256 amount, Bridge bridge, string memory target
     ) internal returns(uint256 allowance) {
-        require(user != address(0), "user address can't be zero");
-        require(amount != 0, "amount can't be zero");
+        if(user == address(0)) {
+            revert ZeroAddressNotAllowed();
+        }
+        if(amount == 0) {
+            revert ZeroAmountNotAllowed();
+        }
         OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
         // get the source wallet
         Wallet storage wallet = $.wallets[user];
@@ -410,14 +328,20 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
         // calculate and deduct tax
         uint256 tax = Math.mulDiv(amount, TAX_NUMERATOR, RATIO_DENOMINATOR);
         amount -= tax;
+        // get configured addresses
+        IOsmiConfig configContract = $.configContract;
+        IOsmiToken tokenContract = IOsmiToken(configContract.getTokenContract());
+        address nodeRewardPool = configContract.getNodeRewardPool();
         // burn tax and transfer amount to this contract
-        $.tokenContract.burnFrom($.tokenPool, tax);
-        $.tokenContract.transferFrom($.tokenPool, address(this), amount);
+        tokenContract.burnFrom(nodeRewardPool, tax);
+        tokenContract.transferFrom(nodeRewardPool, address(this), amount);
         // bridge from this contract to the recipient on the bridge
         address bridgeContract = _getBridgeContract(bridge);
-        require(bridgeContract != address(0), "bridge unavailable");
+        if(bridgeContract == address(0)) {
+            revert UnsupportedBridge();
+        }
         // approve transfer from this contract to the bridge
-        $.tokenContract.approve(bridgeContract, amount);
+        tokenContract.approve(bridgeContract, amount);
         // SNICHOLS: generalize this?
         if(bytes(target).length == 0) {
             target = addressToGalaRecipient(user);
@@ -426,7 +350,7 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
             emit TokensBridgedTo(user, amount, bridge, target);
         }
         IGalaBridge(bridgeContract).bridgeOut(
-            address(_getTokenContract()),
+            address(tokenContract),
             amount,
             0,
             1,
@@ -461,7 +385,7 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
             }
             // compute hash of the buffer without prefix
             let hashValue := shr(96, keccak256(lptr, 40))
-            // loop over each hash hibble and convert address bytes to uppercase
+            // loop over each hash nibble and convert address bytes to uppercase
             addrValue := addr
             rptr := add(lptr, 40)
             for {} gt(rptr, lptr) {} {
@@ -488,8 +412,12 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
      * @dev Attempt to transfer from the token pool into the user's wallet.
      */
     function _claimTokens(address user, uint256 amount) internal returns(uint256 allowance) {
-        require(user != address(0), "user address can't be zero");
-        require(amount != 0, "amount can't be zero");
+        if(user == address(0)) {
+            revert ZeroAddressNotAllowed();
+        }
+        if(amount == 0) {
+            revert ZeroAmountNotAllowed();
+        }
         OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
         // get the source wallet
         Wallet storage wallet = $.wallets[user];
@@ -504,23 +432,31 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
         // calculate and deduct tax
         uint256 tax = Math.mulDiv(amount, TAX_NUMERATOR, RATIO_DENOMINATOR);
         amount -= tax;
+        // get configured addresses
+        IOsmiConfig configContract = $.configContract;
+        IOsmiToken tokenContract = IOsmiToken(configContract.getTokenContract());
+        address nodeRewardPool = configContract.getNodeRewardPool();
         // burn tax and transfer from node pool
-        $.tokenContract.burnFrom($.tokenPool, tax);
-        $.tokenContract.transferFrom($.tokenPool, user, amount);
+        tokenContract.burnFrom(nodeRewardPool, tax);
+        tokenContract.transferFrom(nodeRewardPool, user, amount);
         return wallet.allowance;
     }
 
     /**
-     * @dev Restricted external function to stake `amount` tokens from the token pool into staking. The
-     * updated allowance is returned.
+     * @dev Restricted external function to stake tokens from the node pool for the caller. The updated allowance is
+     * returned.
      */
     function stakeTokens(uint256 amount) restricted external returns(uint256 allowance) {
         return _stakeTokens(_msgSender(), amount);
     }
 
     function _stakeTokens(address user, uint256 amount) internal returns(uint256 allowance) {
-        require(user != address(0), "user address can't be zero");
-        require(amount != 0, "amount can't be zero");
+        if(user == address(0)) {
+            revert ZeroAddressNotAllowed();
+        }
+        if(amount == 0) {
+            revert ZeroAmountNotAllowed();
+        }
         OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
         // get the source wallet
         Wallet storage wallet = $.wallets[user];
@@ -531,13 +467,18 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
         // update allowance
         wallet.allowance -= amount;
         // emit event
-        emit TokensClaimed(user, amount, Bridge.None);
+        emit TokensStaked(user, amount);
+        // get configured addresses
+        IOsmiConfig configContract = $.configContract;
+        IOsmiToken tokenContract = IOsmiToken(configContract.getTokenContract());
+        IOsmiStaking stakingContract = IOsmiStaking(configContract.getStakingContract());
+        address nodeRewardPool = configContract.getNodeRewardPool();
         // transfer amount to this contract
-        $.tokenContract.transferFrom($.tokenPool, address(this), amount);
+        tokenContract.transferFrom(nodeRewardPool, address(this), amount);
         // approve transfer from this contract to the staking contract
-        $.tokenContract.approve(address($.stakingContract), amount);
-        // stake amount tokens on behalf of user
-        $.stakingContract.stakeFor(user, amount);
+        tokenContract.approve(address(stakingContract), amount);
+        // stake tokens into the user's account from this contract
+        stakingContract.stakeFor(user, amount);
         return wallet.allowance;
     }
 
@@ -559,13 +500,21 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
         OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
         Wallet storage wallet = $.wallets[ticket.user];
         // verify ticket state
-        require(ticket.amount > 0, "amount cannot be zero");
-        require(ticket.user != address(0), "user address cannot be zero");
+        if(ticket.user == address(0)) {
+            revert ZeroAddressNotAllowed();
+        }
+        if(ticket.amount == 0) {
+            revert ZeroAmountNotAllowed();
+        }
         // verify ticket timing
         uint256 tt = ticket.timestamp;
         uint256 ltt = wallet.lastTicketTimestamp;
-        require((block.timestamp-tt) <= DISTRIBUTION_WINDOW, "ticket expired");
-        require((tt-ltt) >= DISTRIBUTION_WINDOW, "ticket issued too soon");
+        if((block.timestamp-tt) > DISTRIBUTION_WINDOW) {
+            revert TicketExpired();
+        }
+        if((tt-ltt) < DISTRIBUTION_WINDOW) {
+            revert TicketIssuedTooSoon();
+        }
         // check ticket chain
         if(ticket.expectedHash != wallet.lastTicketHash) {
             revert InvalidTicketHash(ticket.expectedHash, wallet.lastTicketHash);
@@ -618,5 +567,18 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
         if (v != $.ticketSigners[0] && v != $.ticketSigners[1]) {
             revert InvalidTicketSigner(v, $.ticketSigners[0], $.ticketSigners[1]);
         }
+    }
+
+    /**
+     * @dev Temporary function to effect migration to using centralized config contract.
+     */
+    function afterConfigContractUpgrade(address configContract) external restricted {
+        if(configContract == address(0)) {
+            revert ZeroAddressNotAllowed();
+        }
+        OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
+        $.configContract = IOsmiConfig(configContract);
+        emit ConfigContractChanged($.configContract);
+        $.unused_0 = address(0);
     }
 }
