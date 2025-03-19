@@ -18,12 +18,33 @@ task(
   "osmi-grant-distribution-allowances",
   "Grant allowances to distribution manager.",
 ).setAction(async (args, hre) => {
-  const { OsmiToken, OsmiDistributionManager } = await loadDeployedAddresses(hre)
+  const { OsmiToken, OsmiDistributionManager, OsmiStaking } = await loadDeployedAddresses(hre)
   const distributionManagerAddress = await OsmiDistributionManager.getAddress()
-  const nodesPool = await hre.ethers.getSigner(vars.get("OSMI_NODE_REWARDS_ADDRESS"))
-  console.log(`approving ${distributionManagerAddress} unlimited access to ${await nodesPool.getAddress()} $OSMI transfers.`)
-  const nodesPoolToken = OsmiToken.connect(nodesPool)
-  const approveResponse = await nodesPoolToken.approve(distributionManagerAddress, MaxUint256)
+  const stakingContractAddress = await OsmiStaking.getAddress()
+  const stakingPoolAddress = vars.get("OSMI_STAKING_AND_COMMUNITY_INITIATIVES_ADDRESS")
+  const nodesPoolAddress = vars.get("OSMI_NODE_REWARDS_ADDRESS")
+  // grant node pool allowances
+  {
+    const nodesPool = await hre.ethers.getSigner(nodesPoolAddress)
+    const nodesPoolToken = OsmiToken.connect(nodesPool)  
+    if(await nodesPoolToken.allowance(nodesPoolAddress, distributionManagerAddress) != MaxUint256) {
+      console.log(`approving ${distributionManagerAddress} unlimited access to ${nodesPoolAddress} $OSMI transfers.`)
+      await nodesPoolToken.approve(distributionManagerAddress, MaxUint256)
+    }
+    if(await nodesPoolToken.allowance(nodesPoolAddress, stakingContractAddress) != MaxUint256) {
+      console.log(`approving ${stakingContractAddress} unlimited access to ${nodesPoolAddress} $OSMI transfers.`)
+      await nodesPoolToken.approve(stakingContractAddress, MaxUint256)
+    }
+  }
+  // grant staking pool allowances
+  {
+    const stakingPool = await hre.ethers.getSigner(stakingPoolAddress)
+    const stakingPoolToken = OsmiToken.connect(stakingPool)
+    if(await stakingPoolToken.allowance(stakingPoolAddress, stakingContractAddress) != MaxUint256) {
+      console.log(`approving ${stakingContractAddress} unlimited access to ${stakingPoolAddress} $OSMI transfers.`)
+      await stakingPoolToken.approve(stakingContractAddress, MaxUint256)
+    }
+  }
 })
 
 task(

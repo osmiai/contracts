@@ -7,6 +7,7 @@ const ADMIN_ROLE = 0n
 const PUBLIC_ROLE = 18446744073709551615n
 const MANAGER_ROLE = 100n
 const MINTER_ROLE = 200n
+const STAKING_ROLE = 300n
 
 interface RoleSettings {
     id: BigNumberish
@@ -31,6 +32,12 @@ masterRoleSettings.set(MANAGER_ROLE, {
 masterRoleSettings.set(MINTER_ROLE, {
     id: MINTER_ROLE,
     label: "MINTER",
+    admin: MANAGER_ROLE,
+    guardian: MANAGER_ROLE,
+})
+masterRoleSettings.set(STAKING_ROLE, {
+    id: STAKING_ROLE,
+    label: "STAKER",
     admin: MANAGER_ROLE,
     guardian: MANAGER_ROLE,
 })
@@ -117,9 +124,30 @@ const distributionManagerFunctionRoles = (() => {
     setFunctionRole("redeemAndBridge((address,address,uint256,bytes32,uint256,uint8,bytes32,bytes32),uint256,uint8)", PUBLIC_ROLE)
     setFunctionRole("bridgeTokensToGalaChainAlias(uint256,string)", PUBLIC_ROLE)
     setFunctionRole("redeemAndBridgeToGalaChainAlias((address,address,uint256,bytes32,uint256,uint8,bytes32,bytes32),uint256,string)", PUBLIC_ROLE)
+    setFunctionRole("redeemAndStake((address,address,uint256,bytes32,uint256,uint8,bytes32,bytes32),uint256)", PUBLIC_ROLE)
+    setFunctionRole("stakeTokens(uint256 amount)", PUBLIC_ROLE)
     // manager functions
     setFunctionRole("claimTokens(uint256)", MANAGER_ROLE)
     setFunctionRole("redeemAndClaim((address,address,uint256,bytes32,uint256,uint8,bytes32,bytes32),uint256)", MANAGER_ROLE)
+    // result
+    return functionRoles
+})()
+
+// staking function roles
+const stakingFunctionRoles = (() => {
+    const functionRoles = new Map<string, BigNumberish>()
+    function setFunctionRole(signature: string, role: BigNumberish) {
+        if (functionRoles.has(signature)) {
+            throw new Error("function signature already registered")
+        }
+        functionRoles.set(signature, role)
+    }
+    // public functions
+    setFunctionRole("setAutoStake(bool)", PUBLIC_ROLE)
+    setFunctionRole("withdraw((address,uint256,uint256,uint8,bytes32,bytes32),uint256,bool)", PUBLIC_ROLE)
+    // staking functions
+    setFunctionRole("setAutoStakeFor(address,bool)", STAKING_ROLE)
+    setFunctionRole("redeemAndClaim((address,address,uint256,bytes32,uint256,uint8,bytes32,bytes32),uint256)", STAKING_ROLE)
     // result
     return functionRoles
 })()
@@ -213,20 +241,28 @@ subtask("accounts")
     .setAction(async (taskArgs, hre) => {
         console.log("osmi-configure-permissions:accounts")
         const [admin] = await hre.ethers.getSigners()
-        const { OsmiAccessManager } = await loadDeployedAddresses(hre)
+        const { OsmiAccessManager, OsmiStaking, OsmiDistributionManager } = await loadDeployedAddresses(hre)
         async function grantRole(account: AddressLike, role: BigNumberish) {
             const [isMember] = await OsmiAccessManager.hasRole(role, account)
             if (!isMember) {
+                console.log(`grant role ${role} to ${account}`)
                 await OsmiAccessManager.grantRole(role, account, 0)
             }
         }
         async function grantManager(account: AddressLike) {
             await grantRole(account, MANAGER_ROLE)
             await grantRole(account, MINTER_ROLE)
+            await grantRole(account, STAKING_ROLE)
+        }
+        async function grantStaking(account: AddressLike) {
+            await grantRole(account, STAKING_ROLE)
         }
         // grant manager role to admin and osmi-overseer
         await grantManager(admin);
         await grantManager("0x97932ed7cec8cEdf53e498F0efF5E55a54A0BB98")
+        // grant staking role to OsmiStaking and OsmiDistributionManager
+        await grantStaking(await OsmiStaking.getAddress())
+        await grantStaking(await OsmiDistributionManager.getAddress())
     })
 
 subtask("token")
