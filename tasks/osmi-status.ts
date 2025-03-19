@@ -24,7 +24,7 @@ task("osmi-status", "Reports osmi status on chain.")
     function format(v: BigNumberish) {
       return commify(formatUnits(v))
     }
-    const { OsmiToken, OsmiAccessManager, OsmiNode, OsmiNodeFactory } = await loadDeployedAddresses(hre)
+    const { OsmiToken, OsmiAccessManager, OsmiNode, OsmiNodeFactory, OsmiDistributionManager } = await loadDeployedAddresses(hre)
     const network = await hre.ethers.provider.getNetwork()
     const [admin] = await hre.ethers.getSigners()
     console.log(`network: ${network.name} (${network.chainId})`)
@@ -49,6 +49,14 @@ task("osmi-status", "Reports osmi status on chain.")
     console.log("        closed:", await OsmiAccessManager.isTargetClosed(OsmiNodeFactory))
     {
       const [one, two] = await OsmiNodeFactory.getPurchaseTicketSigners()
+      console.log("       signers:", one, two)
+    }
+    console.log("OsmiDistributionManager:")
+    console.log("     authority:", await OsmiDistributionManager.authority())
+    console.log("        closed:", await OsmiAccessManager.isTargetClosed(OsmiDistributionManager))
+    console.log("       config:", await OsmiDistributionManager.getConfigContract())
+    {
+      const [one, two] = await OsmiDistributionManager.getTicketSigners()
       console.log("       signers:", one, two)
     }
     console.log("osmi-nodes.eth:")

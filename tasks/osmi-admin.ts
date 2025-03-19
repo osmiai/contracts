@@ -1,6 +1,6 @@
-import { task } from "hardhat/config"
+import { task, vars } from "hardhat/config"
 import { loadDeployedAddresses } from "./utils"
-import { AddressLike } from "ethers"
+import { AddressLike, ethers } from "ethers"
 
 task("osmi-close", "Close OsmiToken.")
     .setAction(async (args, hre) => {
@@ -151,8 +151,15 @@ task("osmi-upgrade-daily-distribution", "Upgrade OsmiDailyDistribution implement
 
 task("osmi-upgrade-distribution-manager", "Upgrade OsmiDistributionManager implementation.")
     .setAction(async (args, hre) => {
-        // TODO: SNICHOLS: clean this up
-        const { OsmiDistributionManager } = await loadDeployedAddresses(hre)
-        // SNICHOLS: call afterConfigContractUpgrade on upgrade with config contract address
-        // await OsmiDistributionManager.upgradeToAndCall("0x21C4fC244D02EC5EC0df4eF7861362171076E7Cc", "0x")
+        // // TODO: SNICHOLS: clean this up
+        // const { OsmiDistributionManager, OsmiConfig } = await loadDeployedAddresses(hre)
+        // // SNICHOLS: call afterConfigContractUpgrade on upgrade with config contract address
+        // const afterConfigContractUpdate = OsmiDistributionManager.interface.encodeFunctionData("afterConfigContractUpgrade", [
+        //     await OsmiConfig.getAddress(),
+        // ])
+        // console.log("afterConfigContractUpdate:", afterConfigContractUpdate)
+        // await OsmiDistributionManager.upgradeToAndCall(
+        //     "<address>", 
+        //     afterConfigContractUpdate,
+        // )
     })
