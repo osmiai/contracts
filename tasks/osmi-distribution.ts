@@ -51,9 +51,20 @@ task(
   "osmi-set-distribution-signer",
   "Set distribution ticket signer.",
 ).setAction(async (args, hre) => {
-  const { OsmiDistributionManager } = await loadDeployedAddresses(hre)
-  await OsmiDistributionManager.setTicketSigner("0x97932ed7cec8cEdf53e498F0efF5E55a54A0BB98")
+  const { OsmiDistributionManager, OsmiStaking } = await loadDeployedAddresses(hre)
+  const osmiOverseer = "0x97932ed7cec8cEdf53e498F0efF5E55a54A0BB98"
+  await OsmiDistributionManager.setTicketSigner(osmiOverseer)
+  await OsmiStaking.setTicketSigner(osmiOverseer)
 })
+
+task(
+  "osmi-set-staking-apy",
+  "Set staking APY",
+).setAction(async (args, hre) => {
+  const { OsmiStaking } = await loadDeployedAddresses(hre)
+  await OsmiStaking.setAPY("200000000")
+})
+
 
 task(
   "osmi-configure-distribution-bridge",
