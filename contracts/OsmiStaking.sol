@@ -4,6 +4,8 @@ pragma solidity ^0.8.22;
 
 import {IOsmiConfig} from "./IOsmiConfig.sol";
 import {IOsmiToken} from "./IOsmiToken.sol";
+import {IOsmiDistributionManager} from "./IOsmiDistributionManager.sol";
+import {IOsmiDailyDistribution} from "./IOsmiDailyDistribution.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EIP712Upgradeable} from "@openzeppelin/contracts-upgradeable/utils/cryptography/EIP712Upgradeable.sol";
 import {NoncesUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/NoncesUpgradeable.sol";
@@ -62,8 +64,8 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
     event TokensDeposited(address from, address to, uint256 amount);
     event AutoStakeChanged(address user, bool value);
     event StreakStartTimeChanged(address user, uint256 value);
-    event WithdrawalStarted(address user, uint256 timestamp, uint256 amount);
-    event WithdrawalCanceled(address user, uint256 timestamp, uint256 amount);
+    event WithdrawalStarted(address user, uint256 timestamp, uint256 availableAt, uint256 amount);
+    event WithdrawalCanceled(address user, uint256 availableAt, uint256 amount);
 
     /**
      * @dev Ticket is a signed message from the Osmi backend that permits the user to withdraw.
@@ -289,9 +291,8 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
     function _stake(address from, address to, uint256 amount) internal {
         OsmiStakingStorage storage $ = _getOsmiStakingStorage();
         // get configured addresses
-        IOsmiConfig configContract = $.configContract;
-        IOsmiToken tokenContract = (IOsmiToken)(configContract.getTokenContract());
-        address stakingPool = configContract.getStakingPool();
+        IOsmiToken tokenContract = _getTokenContract();
+        address stakingPool = _getStakingPool();
         // transfer tokens to the staking pool
         tokenContract.transferFrom(from, stakingPool, amount);
         // add to stake
@@ -299,8 +300,9 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
         emit TokensDeposited(from, to, amount);
         // update streak start time if this is the first stake
         if(s.streakStartTime == 0) {
-            s.streakStartTime = block.timestamp;
-            emit StreakStartTimeChanged(to, block.timestamp);
+            IOsmiDailyDistribution dailyDistro = _getDailyDistroContract();
+            s.streakStartTime = dailyDistro.getLastDistributionTime();
+            emit StreakStartTimeChanged(to, s.streakStartTime);
         }
     }
 
@@ -333,20 +335,21 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
         if(s.withdrawalAvailableAt > block.timestamp) {
             revert WithdrawalAlreadyInProgress();
         }
+        // get configured addresses
+        IOsmiToken tokenContract = _getTokenContract();
+        IOsmiDailyDistribution dailyDistro = _getDailyDistroContract();
+        address stakingPool = _getStakingPool();
+        address nodeRewardPool = _getNodeRewardPool();
+        // get last daily distro time
+        uint256 lastDistroTime = dailyDistro.getLastDistributionTime();
         // update streak start time
         if(amount == ticket.balance) {
             s.streakStartTime = 0;
         } else {
-            s.streakStartTime = block.timestamp;
+            s.streakStartTime = lastDistroTime;
         }
         emit StreakStartTimeChanged(user, s.streakStartTime);
-        // get configured addresses
-        IOsmiConfig configContract = $.configContract;
-        IOsmiToken tokenContract = (IOsmiToken)(configContract.getTokenContract());
-        address stakingPool = configContract.getStakingPool();
-        address nodeRewardPool = configContract.getNodeRewardPool();
         if(fast) {
-            // handle immediate withdrawal
             // calculate and deduct tax
             uint256 tax = Math.mulDiv(amount, FAST_WITHDRAWAL_TAX_NUMERATOR, RATIO_DENOMINATOR);
             amount -= tax;
@@ -355,18 +358,22 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
                 tokenContract.burnFrom(stakingPool, tax);
             }
             // emit event; amount is available now
-            emit WithdrawalStarted(user, block.timestamp, amount);
+            emit WithdrawalStarted(user, block.timestamp, block.timestamp, amount);
         } else {
             // configure pending withdrawal
             s.withdrawalAmount = amount;
-            s.withdrawalAvailableAt = block.timestamp + WITHDRAWAL_DELAY;
+            s.withdrawalAvailableAt = lastDistroTime + WITHDRAWAL_DELAY;
             // emit event; amount is available later
-            emit WithdrawalStarted(user, s.withdrawalAvailableAt, amount);
+            emit WithdrawalStarted(user, block.timestamp, s.withdrawalAvailableAt, amount);
         }
         // Transfer from the staking pool to the node rewards pool. We do this now to ensure tokens are available
         // to claim when the withdrawal delay is over. Otherwise we'd need another transaction. See _cancelWithdrawal
         // for the reclaim transfer when canceling.
         tokenContract.transferFrom(stakingPool, nodeRewardPool, amount);
+        if(fast) {
+            // fast withdrawal immediately credits to the distribution manager available allowance for the user
+            _getDistroManagerContract().creditAllowance(user, amount);
+        }
     }
 
     /**
@@ -392,10 +399,9 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
             revert Uncancelable();
         }
         // get configured addresses
-        IOsmiConfig configContract = $.configContract;
-        IOsmiToken tokenContract = (IOsmiToken)(configContract.getTokenContract());
-        address stakingPool = configContract.getStakingPool();
-        address nodeRewardPool = configContract.getNodeRewardPool();
+        IOsmiToken tokenContract = _getTokenContract();
+        address stakingPool = _getStakingPool();
+        address nodeRewardPool = _getNodeRewardPool();
         // emit event
         emit WithdrawalCanceled(user, s.withdrawalAvailableAt, s.withdrawalAmount);
         // transfer from the node reward pool back to the staking pool
@@ -425,5 +431,30 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
         if (v != $.ticketSigners[0] && v != $.ticketSigners[1]) {
             revert InvalidTicketSigner();
         }
+    }
+
+    function _getDailyDistroContract() internal view returns(IOsmiDailyDistribution) {
+        OsmiStakingStorage storage $ = _getOsmiStakingStorage();
+        return (IOsmiDailyDistribution)($.configContract.getDailyDistributionContract());
+    }
+
+    function _getTokenContract() internal view returns(IOsmiToken) {
+        OsmiStakingStorage storage $ = _getOsmiStakingStorage();
+        return (IOsmiToken)($.configContract.getTokenContract());
+    }
+
+    function _getDistroManagerContract() internal view returns(IOsmiDistributionManager) {
+        OsmiStakingStorage storage $ = _getOsmiStakingStorage();
+        return (IOsmiDistributionManager)($.configContract.getDistributionManagerContract());
+    }
+
+    function _getStakingPool() internal view returns(address) {
+        OsmiStakingStorage storage $ = _getOsmiStakingStorage();
+        return $.configContract.getStakingPool();
+    }
+
+    function _getNodeRewardPool() internal view returns(address) {
+        OsmiStakingStorage storage $ = _getOsmiStakingStorage();
+        return $.configContract.getNodeRewardPool();
     }
 }
