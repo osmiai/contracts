@@ -146,7 +146,7 @@ task("osmi-upgrade-daily-distribution", "Upgrade OsmiDailyDistribution implement
     .setAction(async (args, hre) => {
         // TODO: SNICHOLS: clean this up
         const { OsmiDailyDistribution } = await loadDeployedAddresses(hre)
-        // await OsmiDailyDistribution.upgradeToAndCall("<address>", "0x")
+        await OsmiDailyDistribution.upgradeToAndCall("0xf77743Fd804173A1A209e2aa8FCf1dC0aF24D8e4", "0x")
     })
 
 task("osmi-upgrade-distribution-manager", "Upgrade OsmiDistributionManager implementation.")

@@ -40,6 +40,11 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
      */
     uint constant DISTRIBUTION_WINDOW = 1 days - 1 hours;
 
+    /**
+     * @dev What's the maximum number of tokens we can unstake at one time?
+     */
+    uint constant UNSTAKE_LIMIT = 1_000_000 * 10 ** 18;
+
     // deprecated events
     event TokenContractChanged(IOsmiToken tokenContract);
     event TokenPoolChanged(address tokenPool);
@@ -65,6 +70,7 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
     error UnsupportedBridge();
     error TicketExpired();
     error TicketIssuedTooSoon();
+    error ExceedsUnstakeLimit();
 
     /**
      * @dev Bridge identifies bridges we can use.
@@ -329,9 +335,8 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
         uint256 tax = Math.mulDiv(amount, TAX_NUMERATOR, RATIO_DENOMINATOR);
         amount -= tax;
         // get configured addresses
-        IOsmiConfig configContract = $.configContract;
-        IOsmiToken tokenContract = IOsmiToken(configContract.getTokenContract());
-        address nodeRewardPool = configContract.getNodeRewardPool();
+        IOsmiToken tokenContract = _getTokenContract();
+        address nodeRewardPool = _getNodeRewardPool();
         // burn tax and transfer amount to this contract
         tokenContract.burnFrom(nodeRewardPool, tax);
         tokenContract.transferFrom(nodeRewardPool, address(this), amount);
@@ -433,9 +438,8 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
         uint256 tax = Math.mulDiv(amount, TAX_NUMERATOR, RATIO_DENOMINATOR);
         amount -= tax;
         // get configured addresses
-        IOsmiConfig configContract = $.configContract;
-        IOsmiToken tokenContract = IOsmiToken(configContract.getTokenContract());
-        address nodeRewardPool = configContract.getNodeRewardPool();
+        IOsmiToken tokenContract = _getTokenContract();
+        address nodeRewardPool = _getNodeRewardPool();
         // burn tax and transfer from node pool
         tokenContract.burnFrom(nodeRewardPool, tax);
         tokenContract.transferFrom(nodeRewardPool, user, amount);
@@ -469,16 +473,42 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
         // emit event
         emit TokensStaked(user, amount);
         // get configured addresses
-        IOsmiConfig configContract = $.configContract;
-        IOsmiToken tokenContract = IOsmiToken(configContract.getTokenContract());
-        IOsmiStaking stakingContract = IOsmiStaking(configContract.getStakingContract());
-        address nodeRewardPool = configContract.getNodeRewardPool();
+        IOsmiToken tokenContract = _getTokenContract();
+        IOsmiStaking stakingContract = _getStakingContract();
+        address nodeRewardPool = _getNodeRewardPool();
         // transfer amount to this contract
         tokenContract.transferFrom(nodeRewardPool, address(this), amount);
         // approve transfer from this contract to the staking contract
         tokenContract.approve(address(stakingContract), amount);
         // stake tokens into the user's account from this contract
         stakingContract.stakeFor(user, amount);
+        return wallet.allowance;
+    }
+
+    /**
+     * @dev Restricted external function when tokens are explicity unstaked.
+     */
+    function tokensUnstaked(address user, uint256 amount) restricted external returns (uint256 allowance) {
+        return _tokensUnstaked(user, amount);
+    }
+
+    function _tokensUnstaked(address user, uint256 amount) internal returns (uint256 allowance) {
+        if(user == address(0)) {
+            revert ZeroAddressNotAllowed();
+        }
+        if(amount == 0) {
+            revert ZeroAmountNotAllowed();
+        }
+        if(amount > UNSTAKE_LIMIT) {
+            revert ExceedsUnstakeLimit();
+        }
+        OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
+        // get the source wallet
+        Wallet storage wallet = $.wallets[user];
+        // update allowance
+        wallet.allowance += amount;
+        // emit event
+        emit TokensUnstaked(user, amount);
         return wallet.allowance;
     }
 
@@ -569,16 +599,23 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
         }
     }
 
-    /**
-     * @dev Temporary function to effect migration to using centralized config contract.
-     */
-    function afterConfigContractUpgrade(address configContract) external restricted {
-        if(configContract == address(0)) {
-            revert ZeroAddressNotAllowed();
-        }
+    function _getTokenContract() internal view returns(IOsmiToken) {
         OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
-        $.configContract = IOsmiConfig(configContract);
-        emit ConfigContractChanged($.configContract);
-        $.unused_0 = address(0);
+        return (IOsmiToken)($.configContract.getTokenContract());
     }
+
+    function _getStakingContract() internal view returns(IOsmiStaking) {
+        OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
+        return (IOsmiStaking)($.configContract.getStakingContract());
+    }
+
+    function _getStakingPool() internal view returns(address) {
+        OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
+        return $.configContract.getStakingPool();
+    }
+
+    function _getNodeRewardPool() internal view returns(address) {
+        OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
+        return $.configContract.getNodeRewardPool();
+    }    
 }

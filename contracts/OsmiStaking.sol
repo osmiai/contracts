@@ -372,7 +372,7 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
         tokenContract.transferFrom(stakingPool, nodeRewardPool, amount);
         if(fast) {
             // fast withdrawal immediately credits to the distribution manager available allowance for the user
-            _getDistroManagerContract().creditAllowance(user, amount);
+            _getDistroManagerContract().tokensUnstaked(user, amount);
         }
     }
 

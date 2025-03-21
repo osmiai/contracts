@@ -62,6 +62,8 @@ interface IOsmiDailyDistribution {
         view
         returns (Pools memory);
 
+    function getLastDistributionTime() external returns (uint);
+    
     function initialize(
         address initialAuthority,
         address tokenContract,

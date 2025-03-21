@@ -132,6 +132,8 @@ interface IOsmiDistributionManager {
 
     function setTokenPool(address tokenPool) external;
 
+    function tokensUnstaked(address user, uint256 amount) external;
+    
     function upgradeToAndCall(address newImplementation, bytes memory data)
         external
         payable;
