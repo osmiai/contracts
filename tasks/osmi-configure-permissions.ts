@@ -125,7 +125,7 @@ const distributionManagerFunctionRoles = (() => {
     setFunctionRole("bridgeTokensToGalaChainAlias(uint256,string)", PUBLIC_ROLE)
     setFunctionRole("redeemAndBridgeToGalaChainAlias((address,address,uint256,bytes32,uint256,uint8,bytes32,bytes32),uint256,string)", PUBLIC_ROLE)
     setFunctionRole("redeemAndStake((address,address,uint256,bytes32,uint256,uint8,bytes32,bytes32),uint256)", PUBLIC_ROLE)
-    setFunctionRole("stakeTokens(uint256 amount)", PUBLIC_ROLE)
+    setFunctionRole("stakeTokens(uint256)", PUBLIC_ROLE)
     // manager functions
     setFunctionRole("claimTokens(uint256)", MANAGER_ROLE)
     setFunctionRole("redeemAndClaim((address,address,uint256,bytes32,uint256,uint8,bytes32,bytes32),uint256)", MANAGER_ROLE)
@@ -146,8 +146,7 @@ const stakingFunctionRoles = (() => {
     setFunctionRole("setAutoStake(bool)", PUBLIC_ROLE)
     setFunctionRole("withdraw((address,uint256,uint256,uint8,bytes32,bytes32),uint256,bool)", PUBLIC_ROLE)
     // staking functions
-    setFunctionRole("setAutoStakeFor(address,bool)", STAKING_ROLE)
-    setFunctionRole("redeemAndClaim((address,address,uint256,bytes32,uint256,uint8,bytes32,bytes32),uint256)", STAKING_ROLE)
+    setFunctionRole("stakeFor(address,uint256)", STAKING_ROLE)
     // result
     return functionRoles
 })()
@@ -195,6 +194,7 @@ task("osmi-configure-permissions", "Automated permission configuration.")
         await hre.run("daily-distribution")
         await hre.run("node-factory")
         await hre.run("distribution-manager")
+        await hre.run("staking")
     })
 
 subtask("roles")
@@ -308,4 +308,11 @@ subtask("distribution-manager")
         console.log("osmi-configure-permissions:distribution-manager")
         const { OsmiAccessManager, OsmiDistributionManager } = await loadDeployedAddresses(hre)
         await applyFunctionRoles(distributionManagerFunctionRoles, OsmiAccessManager, OsmiDistributionManager)
+    })
+
+subtask("staking")
+    .setAction(async (taskArgs, hre) => {
+        console.log("osmi-configure-permissions:staking")
+        const { OsmiAccessManager, OsmiStaking } = await loadDeployedAddresses(hre)
+        await applyFunctionRoles(stakingFunctionRoles, OsmiAccessManager, OsmiStaking)
     })
