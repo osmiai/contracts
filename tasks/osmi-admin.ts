@@ -146,13 +146,14 @@ task("osmi-upgrade-daily-distribution", "Upgrade OsmiDailyDistribution implement
     .setAction(async (args, hre) => {
         // TODO: SNICHOLS: clean this up
         const { OsmiDailyDistribution } = await loadDeployedAddresses(hre)
-        await OsmiDailyDistribution.upgradeToAndCall("0xf77743Fd804173A1A209e2aa8FCf1dC0aF24D8e4", "0x")
+        await OsmiDailyDistribution.upgradeToAndCall("<address>", "0x")
     })
 
 task("osmi-upgrade-distribution-manager", "Upgrade OsmiDistributionManager implementation.")
     .setAction(async (args, hre) => {
         // // TODO: SNICHOLS: clean this up
-        // const { OsmiDistributionManager, OsmiConfig } = await loadDeployedAddresses(hre)
+        const { OsmiDistributionManager } = await loadDeployedAddresses(hre)
+        await OsmiDistributionManager.upgradeToAndCall("<address>", "0x")
         // // SNICHOLS: call afterConfigContractUpgrade on upgrade with config contract address
         // const afterConfigContractUpdate = OsmiDistributionManager.interface.encodeFunctionData("afterConfigContractUpgrade", [
         //     await OsmiConfig.getAddress(),
@@ -162,4 +163,11 @@ task("osmi-upgrade-distribution-manager", "Upgrade OsmiDistributionManager imple
         //     "<address>", 
         //     afterConfigContractUpdate,
         // )
+    })
+
+task("osmi-upgrade-staking", "Upgrade OsmiStaking implementation.")
+    .setAction(async (args, hre) => {
+        // TODO: SNICHOLS: clean this up
+        const { OsmiStaking } = await loadDeployedAddresses(hre)
+        await OsmiStaking.upgradeToAndCall("<address>", "0x")
     })

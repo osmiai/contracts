@@ -40,11 +40,6 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
      */
     uint constant DISTRIBUTION_WINDOW = 1 days - 1 hours;
 
-    /**
-     * @dev What's the maximum number of tokens we can unstake at one time?
-     */
-    uint constant UNSTAKE_LIMIT = 1_000_000 * 10 ** 18;
-
     // deprecated events
     event TokenContractChanged(IOsmiToken tokenContract);
     event TokenPoolChanged(address tokenPool);
@@ -70,8 +65,7 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
     error UnsupportedBridge();
     error TicketExpired();
     error TicketIssuedTooSoon();
-    error ExceedsUnstakeLimit();
-
+    
     /**
      * @dev Bridge identifies bridges we can use.
      */
@@ -482,33 +476,6 @@ contract OsmiDistributionManager is Initializable, AccessManagedUpgradeable, UUP
         tokenContract.approve(address(stakingContract), amount);
         // stake tokens into the user's account from this contract
         stakingContract.stakeFor(user, amount);
-        return wallet.allowance;
-    }
-
-    /**
-     * @dev Restricted external function when tokens are explicity unstaked.
-     */
-    function tokensUnstaked(address user, uint256 amount) restricted external returns (uint256 allowance) {
-        return _tokensUnstaked(user, amount);
-    }
-
-    function _tokensUnstaked(address user, uint256 amount) internal returns (uint256 allowance) {
-        if(user == address(0)) {
-            revert ZeroAddressNotAllowed();
-        }
-        if(amount == 0) {
-            revert ZeroAmountNotAllowed();
-        }
-        if(amount > UNSTAKE_LIMIT) {
-            revert ExceedsUnstakeLimit();
-        }
-        OsmiDistributionManagerStorage storage $ = _getOsmiDistributionManagerStorage();
-        // get the source wallet
-        Wallet storage wallet = $.wallets[user];
-        // update allowance
-        wallet.allowance += amount;
-        // emit event
-        emit TokensUnstaked(user, amount);
         return wallet.allowance;
     }
 
