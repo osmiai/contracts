@@ -144,8 +144,8 @@ const stakingFunctionRoles = (() => {
     }
     // public functions
     setFunctionRole("setAutoStake(bool)", PUBLIC_ROLE)
-    setFunctionRole("redeem((address,uint256,bytes32,uint256,uint8,bytes32,bytes32))", PUBLIC_ROLE)
-    setFunctionRole("redeemAndWithdraw((address,uint256,bytes32,uint256,uint8,bytes32,bytes32),uint256,bool)", PUBLIC_ROLE)
+    setFunctionRole("redeem((address,uint256,bytes32,int256,uint8,bytes32,bytes32))", PUBLIC_ROLE)
+    setFunctionRole("redeemAndWithdraw((address,uint256,bytes32,int256,uint8,bytes32,bytes32),uint256,bool)", PUBLIC_ROLE)
     setFunctionRole("withdraw(uint256,bool)", PUBLIC_ROLE)
     // staking functions
     setFunctionRole("stakeFor(address,uint256)", STAKING_ROLE)
