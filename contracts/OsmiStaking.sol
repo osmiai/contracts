@@ -20,10 +20,10 @@ import "@openzeppelin/contracts/utils/math/Math.sol";
 /// @custom:security-contact contact@osmi.ai
 contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable, EIP712Upgradeable, NoncesUpgradeable {
     bytes32 private constant TICKET_TYPEHASH = 
-        keccak256("Ticket(address user,uint256 timestamp,bytes32 expectedHash,int256 delta,uint256 nonce)");
+        keccak256("Ticket(address user,uint256 timestamp,bytes32 expectedHash,uint256 amount,uint256 nonce)");
 
     bytes32 private constant TICKET_CHAIN_TYPEHASH = 
-        keccak256("TicketChain(bytes32 prev,address user,uint256 timestamp,int256 delta,uint256 nonce)");
+        keccak256("TicketChain(bytes32 prev,address user,uint256 timestamp,uint256 amount,uint256 nonce)");
 
     /**
      * @dev Default APY numerator.
@@ -81,7 +81,7 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
     event AutoStakeChanged(address user, bool value);
     event WithdrawalStarted(address user, uint256 availableAt, uint256 amount, bool fast);
     event WithdrawalCanceled(address user, uint256 availableAt, uint256 amount);
-    event TicketRedeemed(address user, int256 delta, uint256 timestamp);
+    event TicketRedeemed(address user, uint256 amount, uint256 timestamp);
 
     /**
      * @dev Ticket is a signed message from the Osmi backend that permits the user to withdraw.
@@ -90,7 +90,7 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
         address user;
         uint256 timestamp;
         bytes32 expectedHash;
-        int256 delta;
+        uint256 amount;
         uint8 v;
         bytes32 r;
         bytes32 s;
@@ -419,7 +419,7 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
         if(ticket.user == address(0)) {
             revert ZeroAddressNotAllowed();
         }
-        if(ticket.delta == 0) {
+        if(ticket.amount == 0) {
             revert ZeroAmountNotAllowed();
         }
         // verify ticket timing
@@ -436,27 +436,19 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
             revert InvalidTicketHash();
         }
         // update stake state
-        if(ticket.delta > 0) {
-            s.balance += uint256(ticket.delta);
-        } else {
-            uint256 delta = uint256(-ticket.delta);
-            if(delta > s.balance) {
-                revert InsufficientBalance();
-            }
-            s.balance -= delta;
-        }
+        s.balance += ticket.amount;
         s.lastTicketTimestamp = ticket.timestamp;
         bytes32 structHash = keccak256(abi.encode(
             TICKET_CHAIN_TYPEHASH,
             s.lastTicketHash,
             ticket.user,
             ticket.timestamp,
-            ticket.delta,
+            ticket.amount,
             nonce
         ));
         s.lastTicketHash = _hashTypedDataV4(structHash);
         // emit event
-        emit TicketRedeemed(ticket.user, ticket.delta, tt);
+        emit TicketRedeemed(ticket.user, ticket.amount, tt);
         return s.balance;
     }
 
@@ -507,7 +499,7 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
             TICKET_TYPEHASH, 
             ticket.user, 
             ticket.timestamp,
-            ticket.delta, 
+            ticket.amount, 
             nonce
         ));
         bytes32 hash = _hashTypedDataV4(structHash);
@@ -546,12 +538,5 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
     function _getNodeRewardPool() internal view returns(address) {
         OsmiStakingStorage storage $ = _getOsmiStakingStorage();
         return $.configContract.getNodeRewardPool();
-    }
-
-    // temporary admin function to silently adjust the balance of a user's stake
-    function adjustBalance(address user, uint256 amount) restricted external {
-        OsmiStakingStorage storage $ = _getOsmiStakingStorage();
-        Stake storage s = $.stakes[user];
-        s.balance += amount;
     }
 }

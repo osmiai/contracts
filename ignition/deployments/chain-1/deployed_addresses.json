@@ -19,5 +19,5 @@
   "OsmiConfigProxyModule#ERC1967Proxy": "0x632A777BDbC349758D7A64705AB1e852d59ebA01",
   "OsmiStakingProxyModule#OsmiStaking": "0x0663E80Da780dc4F058c569c86DB5B87Dc996cbe",
   "OsmiStakingProxyModule#ERC1967Proxy": "0x87EB0B65DA5c1581F82f12e0e7c31Cb1BCABC816",
-  "OsmiStakingUpgradeModule#OsmiStaking": "0xcC30988d774cCc88EDf321BA03a09cB9C06606B3"
+  "OsmiStakingUpgradeModule#OsmiStaking": "0x966811819f9A24D66aa3b680bA5E90F2Db7859dB"
 }
