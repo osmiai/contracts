@@ -82,6 +82,7 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
     event WithdrawalStarted(address user, uint256 availableAt, uint256 amount, bool fast);
     event WithdrawalCanceled(address user, uint256 availableAt, uint256 amount);
     event TicketRedeemed(address user, uint256 amount, uint256 timestamp);
+    event WithdrawalTax(address user, uint256 amount);
 
     /**
      * @dev Ticket is a signed message from the Osmi backend that permits the user to withdraw.
@@ -388,6 +389,7 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
             if(tax > 0) {
                 // burn tax
                 tokenContract.burnFrom(stakingPool, tax);
+                emit WithdrawalTax(user, tax);
             }
             s.flags |= FLAG_FAST_WITHDRAWAL;
             availableAt += FAST_WITHDRAWAL_DELAY;
@@ -499,6 +501,7 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
             TICKET_TYPEHASH, 
             ticket.user, 
             ticket.timestamp,
+            ticket.expectedHash,
             ticket.amount, 
             nonce
         ));
@@ -538,5 +541,9 @@ contract OsmiStaking is Initializable, AccessManagedUpgradeable, UUPSUpgradeable
     function _getNodeRewardPool() internal view returns(address) {
         OsmiStakingStorage storage $ = _getOsmiStakingStorage();
         return $.configContract.getNodeRewardPool();
+    }
+
+    function emitWithdrawalTax(address user, uint256 amount) external restricted {
+        emit WithdrawalTax(user, amount);
     }
 }
