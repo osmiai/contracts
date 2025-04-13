@@ -26,12 +26,12 @@ task(
   // grant node pool allowances
   {
     const nodesPool = await hre.ethers.getSigner(nodesPoolAddress)
-    const nodesPoolToken = OsmiToken.connect(nodesPool)  
-    if(await nodesPoolToken.allowance(nodesPoolAddress, distributionManagerAddress) != MaxUint256) {
+    const nodesPoolToken = OsmiToken.connect(nodesPool)
+    if (await nodesPoolToken.allowance(nodesPoolAddress, distributionManagerAddress) != MaxUint256) {
       console.log(`approving ${distributionManagerAddress} unlimited access to ${nodesPoolAddress} $OSMI transfers.`)
       await nodesPoolToken.approve(distributionManagerAddress, MaxUint256)
     }
-    if(await nodesPoolToken.allowance(nodesPoolAddress, stakingContractAddress) != MaxUint256) {
+    if (await nodesPoolToken.allowance(nodesPoolAddress, stakingContractAddress) != MaxUint256) {
       console.log(`approving ${stakingContractAddress} unlimited access to ${nodesPoolAddress} $OSMI transfers.`)
       await nodesPoolToken.approve(stakingContractAddress, MaxUint256)
     }
@@ -40,7 +40,7 @@ task(
   {
     const stakingPool = await hre.ethers.getSigner(stakingPoolAddress)
     const stakingPoolToken = OsmiToken.connect(stakingPool)
-    if(await stakingPoolToken.allowance(stakingPoolAddress, stakingContractAddress) != MaxUint256) {
+    if (await stakingPoolToken.allowance(stakingPoolAddress, stakingContractAddress) != MaxUint256) {
       console.log(`approving ${stakingContractAddress} unlimited access to ${stakingPoolAddress} $OSMI transfers.`)
       await stakingPoolToken.approve(stakingContractAddress, MaxUint256)
     }
@@ -91,4 +91,33 @@ task(
     console.log(fun.data)
     console.log(fun.stack)
   }
+})
+
+
+task(
+  "osmi-disable-distro",
+).setAction(async (args, hre) => {
+  const { OsmiDailyDistribution } = await loadDeployedAddresses(hre)
+  // this must match the value in OsmiDailyDistribution.sol
+  const RatioDenominator = 1_000_000_000
+  const pools = {
+    nodeRewards: {
+      to: vars.get("OSMI_NODE_REWARDS_ADDRESS"),
+      numerator: Math.round(RatioDenominator * 0.5),
+    },
+    projectDevelopmentFund: {
+      to: vars.get("OSMI_PROJECT_FUND_ADDRESS"),
+      numerator: Math.round(RatioDenominator * 0.2),
+    },
+    stakingAndCommunityInitiatives: {
+      to: vars.get("OSMI_STAKING_AND_COMMUNITY_INITIATIVES_ADDRESS"),
+      numerator: Math.round(RatioDenominator * 0.2),
+    },
+    referralProgram: {
+      to: vars.get("OSMI_REFERRAL_PROGRAM_ADDRESS"),
+      numerator: Math.round(RatioDenominator * 0.1),
+    },
+  }
+  console.log(pools)
+  await OsmiDailyDistribution.configureDistribution(1, pools)
 })
