@@ -91,6 +91,14 @@ task("osmi-mint-team-nodes", "Mint 250 nodes for the team.")
         }
     })
 
+task("osmi-mint-sales-nodes", "mint nodes for the sales team")
+    .setAction(async (args, hre) => {
+        const { OsmiNode } = await loadDeployedAddresses(hre)
+        // const overseer = await hre.ethers.getSigner("0x97932ed7cec8cEdf53e498F0efF5E55a54A0BB98")
+        // const overseerOsmiNode = OsmiNode.connect(overseer)
+        console.log(await OsmiNode.safeMint("0xf856b01ff02dc5a61cefd35ffe6aa52711a1032d"))
+    })
+
 task("unlock-node", "Remove the transfer lock for a node.")
     .setAction(async (args, hre) => {
         // const { OsmiNode } = await loadDeployedAddresses(hre)

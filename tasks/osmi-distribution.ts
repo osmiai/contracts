@@ -62,7 +62,7 @@ task(
   "Set staking APY",
 ).setAction(async (args, hre) => {
   const { OsmiStaking } = await loadDeployedAddresses(hre)
-  await OsmiStaking.setAPY("200000000")
+  await OsmiStaking.setAPY("75000000")
 })
 
 
